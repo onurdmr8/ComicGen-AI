@@ -1,0 +1,47 @@
+{
+  "id": "/",
+  "name": "ComicGen AI - Çizgi Roman Oluşturucu",
+  "short_name": "ComicGen AI",
+  "description": "Yapay zeka destekli, 4 panelli profesyonel çizgi roman oluşturucu ve hikaye görselleştirici.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#facc15",
+  "dir": "ltr",
+  "lang": "tr",
+  "categories": [
+    "entertainment",
+    "photo",
+    "productivity",
+    "books"
+  ],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "prefer_related_applications": false
+}
