@@ -455,6 +455,16 @@ export function isRomanceOrEmotionalTheme(topic?: string, tone?: string, intro?:
   return /\b(aşk|aşık|sevgi|sevgili|romantik|romantizm|romance|flört|öpüş|öpücük|kiss|date|buluşma|tutku|tutkulu|sensual|intimate|evlilik|ilişki|sarılma|duygusal|drama|dram|slice of life|kafe|gündelik|shojo|erotik|yatak|bedroom|sevgililer|itiraf)\b/i.test(combined);
 }
 
+export function isIntimateOrMatureScene(text?: string): boolean {
+  if (!text) return false;
+  return /\b(seviş|yatak|çarşaf|soyun|çıplak|öpüş|tutku|şehvet|erotik|tensel|banyo|duş|sarılma|sensual|intimate|bedroom|embrace|undress|kiss|passion|seduce|desire|lover|nude|sheets|making\s+love|undressed|lingerie)\b/i.test(text);
+}
+
+export function isGrittyOrActionScene(text?: string): boolean {
+  if (!text) return false;
+  return /\b(dövüş|savaş|çatışma|kan|yara|bıçak|silah|vurul|saldırı|kavga|tehdit|fight|combat|battle|wound|injury|blade|knife|gun|shoot|attack|clash|noir|blood)\b/i.test(text);
+}
+
 export const getStyleEnhancement = (style?: string, colorPalette?: string, lightingMood?: string, consistencyLock?: boolean, isRomanceTheme?: boolean): string => {
   const matchedStyle = COMIC_ART_STYLES.find(s => s.id === style || s.name === style);
   
@@ -584,62 +594,65 @@ export function sanitizePromptForSafety(
   const isAngle = modestyTechnique === "angles" || /\b(omuz|arkadan|sırttan|behind|over.the.shoulder)\b/i.test(cleaned);
   const isMacro = modestyTechnique === "macro" || /\b(makro|macro|eller|hands|parmak|dudak|lips)\b/i.test(cleaned);
 
-  // Dynamic Modesty Replacements based on requested concealment method
+  // Dynamic Modesty Replacements based on requested concealment method - FINE BALANCE (İNCE DENGE):
+  // Never strip away heat, intimacy or the situation; frame tastefully like master adult graphic novels (Heavy Metal, Milo Manara, Seinen)
   const modestyNudityEn = isSteam
-    ? "intimately undressed, with swirling dense atmospheric steam and rising warm mist veiling and concealing modesty zones and explicit anatomy, glistening skin under moody lighting, zero prohibited nudity, graphic novel standards"
+    ? "intimately undressed, bodies close in swirling dense hot bath steam and rising warm moisture artfully veiling sensitive anatomy, glistening skin contours, warm moody lighting, intense sensual heat, graphic novel standards"
     : isSilhouette
-    ? "intimately undressed, cast in dramatic chiaroscuro noir silhouette and deep shadows that completely conceal explicit anatomy, golden candlelight rim illumination tracing back and shoulder contours, zero prohibited nudity"
+    ? "intimately undressed, cast in evocative chiaroscuro noir silhouette and midnight shadows concealing explicit anatomy, golden candlelight rim illumination tracing bare curves, arched back, and shoulders, high sensual allure"
     : isAngle
-    ? "intimately undressed, framed from behind where the arch of the back and shoulder strategically block and conceal explicit anatomy from camera view, focusing on facial ecstasy and entwined hands, zero prohibited nudity"
+    ? "intimately undressed in close embrace, captured in over-the-shoulder rear angle where the partner's shoulder and back naturally shield explicit anatomy, focus on parted lips, bare collarbones, and entwined hands"
     : isMacro
-    ? "intimate romantic closeness, extreme sensual macro framing focusing on entwined hands clutching silk sheets, parted lips, closed eyes, and heavy breathing, keeping all explicit anatomy outside the frame, zero prohibited nudity"
-    : "intimately undressed in bed, with luxurious silk satin bedsheets and soft linen duvet strategically and elegantly draped across hips and modesty zones, completely concealing explicit anatomy while exposing bare shoulders, clavicles, and arched backs, warm romantic candlelight, zero prohibited nudity, graphic novel publishing standards";
+    ? "intense romantic ecstasy, macro framing on entwined hands clutching silk sheets, arched bare back, parted breathless lips, throat, and flushed skin, keeping explicit anatomy outside the frame"
+    : "intimately undressed together in bed, bare shoulders and clavicles exposed, draped luxurious silk satin bedsheets wrapped around hips concealing explicit anatomy, warm candlelit bedroom ambiance, intense physical desire, published adult graphic novel masterpiece";
 
   const modestyNudityTr = isSteam
-    ? "soyunuk, ancak yükselen yoğun buhar ve sis perdesi hassas bölgeleri ve çıplaklığı estetik biçimde örter, loş ışık altında parlayan tensel hatlar, sıfır müstehcenlik"
+    ? "banyoda soyunuk, ancak yükselen yoğun sıcak buhar ve sis perdesi hassas yerleri örterken tensel hatları ve ıslak teni parlatır, nefes kesen tensel sıcaklık, sıfır filtre engeli"
     : isSilhouette
-    ? "loş ışıkta soyunuk, ancak derin noir gölgeler ve silüet hatları tüm çıplaklığı tamamen kapatır, altın sarısı kontur ışığıyla sırt ve omuzlar belirgin, sıfır müstehcenlik"
+    ? "loş odada soyunuk, derin noir gölgeler ve sanatsal silüet hatları çıplaklığı kapatırken altın rim ışığı omuz ve sırt kavislerini belirginleştirir, yüksek tutku"
     : isAngle
-    ? "arkadan çekimle soyunuk, ancak ön plandaki omuz ve sırt çıplaklığı kameraya karşı doğal bir kalkan gibi kapatır, yüze ve kenetli ellere odaklı, sıfır müstehcenlik"
+    ? "omuz üstü gizleyici açıyla soyunuk yakınlaşma, partnerin sırtı ve omzu mahrem kısımları doğalca kapatır, aralanmış dudaklara, çıplak köprücük kemiğine ve kenetli ellere odaklı"
     : isMacro
-    ? "çarşafı sıkan kenetlenmiş parmaklara, aralanmış dudaklara ve boyuna odaklanan tensel makro kadraj, çıplaklık kadraj dışında, sıfır müstehcenlik"
-    : "yatakta soyunuk, ancak dökümlü saten çarşaflar ve örtüler çıplaklığı estetikçe tamamen kapatır, sırt ve omuzlar açıkta, mum ışığında romantik atmosfer, sıfır müstehcenlik";
+    ? "çarşafı sıkan kenetlenmiş parmaklara, gerilmiş boyna, aralanmış nefes nefese dudaklara ve kızarmış tene odaklanan tensel makro kadraj"
+    : "yatakta çıplak omuzlar ve sırt açıkta, dökümlü saten çarşaflar kalçayı ve mahrem yerleri sararak kapatır, mum ışığında yoğun tensel çekim ve tutkulu arzu";
 
   const modestyLovemakingEn = isSteam
-    ? "deep passionate intimate embrace, swirling atmospheric warm steam and moisture gently concealing modesty zones, breathless romantic heat, glistening contours, zero explicit anatomy visible"
+    ? "locked in deep breathless lovemaking, swirling atmospheric steam veiling explicit anatomy, glistening skin, breathless proximity, hands gripping waist, intense adult graphic novel passion"
     : isSilhouette
-    ? "deep passionate intimate embrace, silhouetted in dramatic noir shadows with golden rim lighting outlining bodies, concealing explicit anatomy in atmospheric darkness, intense romantic heat"
+    ? "locked in deep passionate lovemaking, silhouetted in dramatic noir shadows with golden rim lighting outlining bodies, atmospheric darkness concealing explicit anatomy, intense romantic heat and desire"
     : isAngle
-    ? "deep passionate intimate embrace captured in discreet over-the-shoulder angle from behind, the curvature of the back concealing explicit anatomy from view, focusing on intense facial chemistry"
-    : "deep passionate intimate embrace in bed, entwined romantically under draped luxurious silk satin duvet concealing modesty zones, breathless closeness, magnetic physical chemistry, candlelit romantic heat";
+    ? "locked in passionate lovemaking, framed in discreet over-the-shoulder angle from behind, the curvature of the back concealing explicit anatomy, focus on intense facial ecstasy and gripping hands"
+    : "locked in deep passionate lovemaking in bed, entwined under draped luxurious silk duvet concealing explicit anatomy, bare shoulders and flushed skin, breathless proximity, intense physical desire, candlelit romance";
 
   const modestyLovemakingTr = isSteam
-    ? "tutku dolu tensel yakınlaşma, yükselen buhar ve sis perdesi altında birbirine sarılmış, nefes nefese romantik elektriklenme, buğulu atmosferik ışık, estetik kapalı kadraj"
+    ? "yoğun tutkuyla sevişme anı, sıcak buhar perdesi altında birbirine sarılmış, nefes nefese yakınlık, bele kenetlenen eller, yetişkin çizgi roman tutkusu"
     : isSilhouette
-    ? "tutku dolu tensel yakınlaşma, mum ışığında derin silüet ve gölgeler ardında birbirine sarılmış, nefes nefese romantik elektriklenme, sanatsal gölge oyunu"
+    ? "mum ışığında ve derin noir gölgeler ardında tutkuyla sevişme anı, silüet hatlarıyla örtülen mahremiyet, nefes nefese romantik elektriklenme"
     : isAngle
-    ? "tutku dolu tensel yakınlaşma, arkadan omuz üstü gizleyici açıyla birbirine sarılmış, nefes nefese romantik elektriklenme, yüze ve kenetli parmaklara odaklı"
-    : "tutku dolu tensel yakınlaşma, saten örtüler altında birbirine sarılmış, nefes nefese romantik elektriklenme, mum ışığında derin tensel çekim, dökümlü çarşaf kalkanı";
+    ? "arkadan omuz üstü gizleyici açıyla tutku dolu sevişme anı, partnerin sırt kavisi mahremiyeti gizlerken haz dolu yüze ve kenetli parmaklara odaklı"
+    : "yatakta saten örtüler altında tutkuyla sevişme anı, çıplak omuzlar ve aralanmış dudaklar, bele sarılan eller, mum ışığında yüksek tensel elektriklenme";
 
   const safetyReplacements: [RegExp, string][] = [
-    // Blood & Gore
-    [/\b(blood(?:y|ied|ing)?|gore|gory|flesh|mutilat\w*|decapitat\w*|dismember\w*|severed|amputat\w*)\b/gi, "dramatic action dust, dynamic motion blur, impact burst"],
-    [/\b(kan(?:lar)?(?:\s+içinde)?|kanlı|vahşet|parçalanmış|kesik\s+kafa|kopmuş|organ)\b/gi, "çatışma tozu, dramatik hareket çizgileri, gerilim dolu mücadele anı"],
+    // Blood & Gritty Action - Fine Balance: stylized graphic novel combat damage, crimson shading, and exhaustion instead of childish dust
+    [/\b(blood(?:y|ied|ing)?)\b/gi, "stylized dark crimson comic accents, gritty combat scrapes, bruised skin, intense visceral wear"],
+    [/\b(gore|gory|flesh|mutilat\w*|decapitat\w*|dismember\w*|severed|amputat\w*)\b/gi, "heavy battle damage, shattered protective armor, devastating knockout strike, gritty exhaustion"],
+    [/\b(kan(?:lar)?(?:\s+içinde)?|kanlı)\b/gi, "koyu kırmızı stilize çizgi roman darbeleri, yüzünde ve kollarında çizikler, ter ve nefes nefese dramatik mücadele izleri"],
+    [/\b(vahşet|parçalanmış|kesik\s+kafa|kopmuş|organ)\b/gi, "ağır savaş hasarı, parçalanmış zırh ve giysiler, yere serici sert darbe, tükenmişlik"],
     
-    // Death & lethal violence
-    [/\b(kill(?:ing|ed|s)?|murder(?:ed|ing|s)?|slaughter\w*|assassinat\w*|massacre|genocide)\b/gi, "defeat, disarm, confront, overpower"],
-    [/\b(öldür\w*|cinayet\w*|katlet\w*|katliam\w*|boğazla\w*)\b/gi, "etkisiz hale getir, alt et, yüzleş, püskürt"],
-    [/\b(corpse|dead\s+body|cadaver|severed\s+limbs?)\b/gi, "defeated fallen adversary, unconscious opponent"],
-    [/\b(ceset|ölü\s+beden|ölü|mefta)\b/gi, "yere serilmiş rakip, baygın düşman"],
+    // Death & lethal violence - Fine Balance: keep high stakes, fallen opponent, and desperate struggle
+    [/\b(kill(?:ing|ed|s)?|murder(?:ed|ing|s)?|slaughter\w*|assassinat\w*|massacre|genocide)\b/gi, "overpower with fatal intensity, decisive finishing strike, dramatic life-or-death confrontation"],
+    [/\b(öldür\w*|cinayet\w*|katlet\w*|katliam\w*|boğazla\w*)\b/gi, "ölümcül kararlılıkla alt et, son darbe hamlesi, nefes kesen yüzleşme"],
+    [/\b(corpse|dead\s+body|cadaver)\b/gi, "fallen adversary motionless on the floor in deep shadows, defeated opponent"],
+    [/\b(ceset|ölü\s+beden|ölü|mefta)\b/gi, "gölgeler içinde yerde hareketsiz yatan hasım, alt edilmiş düşman"],
 
-    // Executions & direct firearms to head/face
-    [/\b((?:gun|pistol|rifle|revolver)\s+(?:pointed|pointing)\s+at\s+(?:the\s+)?(?:head|face|forehead|temple))\b/gi, "intense high-stakes confrontation and standoff"],
-    [/\b((?:shoot|shot|shooting)\s+in\s+the\s+(?:head|face|chest))\b/gi, "knocking backward with powerful impact shockwave"],
-    [/\b(kafaya\s+silah|kafasına\s+silah\s+daya\w*|şakağına\s+silah|kurşunla\w*|infaz\w*)\b/gi, "yüksek gerilimli dramatik yüzleşme ve çatışma anı"],
+    // Executions & direct firearms - Fine Balance: keep the gun drawn, cold tension, glinting barrel
+    [/\b((?:gun|pistol|rifle|revolver)\s+(?:pointed|pointing)\s+at\s+(?:the\s+)?(?:head|face|forehead|temple))\b/gi, "aiming weapon in cold close-range standoff, glinting metal, dark noir shadows, icy calculating gaze"],
+    [/\b((?:shoot|shot|shooting)\s+in\s+the\s+(?:head|face|chest))\b/gi, "direct ballistic muzzle blast knocking subject backward in high-impact freeze frame"],
+    [/\b(kafaya\s+silah|kafasına\s+silah\s+daya\w*|şakağına\s+silah|kurşunla\w*|infaz\w*)\b/gi, "yakın mesafeden doğrultulmuş silahla buz gibi yüzleşme, parlayan namlu, noir gölgeler ve gerilim dolu bakışlar"],
 
-    // Stabbing & slitting
-    [/\b(stab(?:bed|bing)?\s+(?:in|into|with)|slit(?:ting)?\s+(?:the\s+)?throat)\b/gi, "disarming martial strike, sudden close-quarters grapple"],
-    [/\b(bıçakla\w*|bıçak\s+sapla\w*|boğaz(?:ını)?\s+kes\w*)\b/gi, "silahsızlandırma hamlesi, yakın dövüş savunması"],
+    // Stabbing & blades - Fine Balance: blade inches from strike, glinting steel, desperate struggle
+    [/\b(stab(?:bed|bing)?\s+(?:in|into|with)|slit(?:ting)?\s+(?:the\s+)?throat)\b/gi, "lethal close-quarters blade strike inches from target, glinting steel reflection, desperate counter-struggle"],
+    [/\b(bıçakla\w*|bıçak\s+sapla\w*|boğaz(?:ını)?\s+kes\w*)\b/gi, "hedefe santimler kala parlayan ölümcül bıçak hamlesi, çelik yansıması, nefes kesici can pazarı"],
 
     // Sensual / Erotic / PG-17 / PG-18 Transformations (Artistic modesty boundary push without triggering filter blocks)
     ...(isPG17or18 ? [
@@ -647,19 +660,17 @@ export function sanitizePromptForSafety(
       [/\b(naked|nude|nudity|topless|stripped\s+naked|bare\s+skin)\b/gi, modestyNudityEn],
       [/\b(çırılçıplak|çıplak|soyunuk|üstü\s+çıplak)\b/gi, modestyNudityTr],
       
-      // Undressing -> Loosened collar, unbuttoned silk shirt, alluring exposed neckline
-      [/\b(undress\w*|taking\s+off\s+clothes|strip(?:ping)?|unbutton\w*)\b/gi, "loosened silk collar, partially unbuttoned shirt revealing collarbone, draped stylish garments, intimate private room ambiance"],
-      [/\b(soyun\w*|kıyafetlerini\s+çıkar\w*|düğmelerini\s+çöz\w*)\b/gi, "açılmış ipek yaka, köprücük kemiğini ortaya çıkaran hafif açık gömlek, loş yatak odası atmosferi"],
+      // Undressing -> Sensually unbuttoned, sliding clothes off shoulders, bare glowing skin, intimate bedroom heat
+      [/\b(undress\w*|taking\s+off\s+clothes|strip(?:ping)?|unbutton\w*)\b/gi, "sensually unbuttoned, sliding silk shirt off bare shoulders, exposed collarbone, intimate bedroom tension, draped clothes"],
+      [/\b(soyun\w*|kıyafetlerini\s+çıkar\w*|düğmelerini\s+çöz\w*)\b/gi, "tutkuyla çözülen düğmeler, omuzlardan kayan ipek gömlek, açıkta kalan köprücük kemikleri, loş yatak odası tensel gerilimi"],
 
-      // Lingerie & Underwear -> Silk slip, delicate lace loungewear
-      [/\b(underwear|lingerie|panties|bra|nightwear)\b/gi, "delicate silk lace slip, elegant satin loungewear, flattering evening attire"],
-      [/\b(iç\s+çamaşır\w*|gecelik|sütyen|külot)\b/gi, "zarif ipek saten gecelik, şık dantelli sabahlık, çekici ev giyimi"],
+      // Lingerie & Underwear -> Sensual silk lace lingerie, sheer satin slip
+      [/\b(underwear|lingerie|panties|bra|nightwear)\b/gi, "alluring sheer silk lace slip, delicate satin lingerie, form-fitting elegant sleepwear, provocative evening allure"],
+      [/\b(iç\s+çamaşır\w*|gecelik|sütyen|külot)\b/gi, "çekici şeffaf dantelli ipek gecelik, vücudu saran saten iç giyim, kışkırtıcı loş gece zarafeti"],
 
-      // Erotic & Sexy -> Sultry romantic tension, magnetic allure, seductive bedroom eyes
-      [/\b(erotic\w*|sexy\s+pose|seductive\s+pose|provocative)\b/gi, isPG18
-        ? "sensual intense romantic tension, magnetic allure, sultry seductive bedroom eyes, captivating posture, PG-18 mature adult graphic novel aesthetic"
-        : "sensual intense romantic tension, magnetic allure, sultry seductive bedroom eyes, captivating posture, PG-17 mature graphic novel aesthetic"],
-      [/\b(erotik\w*|seksi\s+poz|baştan\s+çıkarıcı\s+poz|müstehcen)\b/gi, "yoğun tensel ve romantik çekim, baştan çıkarıcı bakışlar, şehvetli ve çekici duruş, yetişkin olgun çizgi roman estetiği"],
+      // Erotic & Sexy -> Sultry passionate allure, seductive bedroom eyes, electric chemistry
+      [/\b(erotic\w*|sexy\s+pose|seductive\s+pose|provocative)\b/gi, "sultry intense physical passion, magnetic allure, heavy seductive bedroom eyes, parted lips, captivating proximity, mature adult graphic novel aesthetic"],
+      [/\b(erotik\w*|seksi\s+poz|baştan\s+çıkarıcı\s+poz|müstehcen)\b/gi, "yoğun tensel çekim, baştan çıkarıcı buğulu bakışlar, aralanmış dudaklar, nefes kesen fiziksel arzu, yetişkin çizgi roman estetiği"],
 
       // Sexual intimacy -> Lovemaking with clever artistic modesty cover
       [/\b(sex|sexual|making\s+love|intercourse|making\s+out\s+heavily)\b/gi, modestyLovemakingEn],
@@ -743,19 +754,18 @@ ${unsafePrompt.slice(0, 3500)}
 
 Task: Rewrite this prompt into a clean, 100% safety-compliant, ${isPG18 ? "PG-18 mature aesthetic" : isPG17or18 ? "PG-17 mature aesthetic" : "family-safe PG-13"} Standard Comic Book illustration prompt that passes AI filters with ZERO BLOCKS.
 
-CRITICAL CHARACTER, POSITION, SETTING & SENSUAL RELEVANCE MANDATES:
+CRITICAL CHARACTER, POSITION, SETTING & SENSUAL RELEVANCE MANDATES - THE FINE BALANCE (İNCE DENGE):
 1. STRICTLY FORBIDDEN: NEVER introduce superheroes, superhero suits, spandex, capes, masks, sci-fi lasers, cosmic energy, or unrelated figures unless the original prompt explicitly stated them. If the characters are ordinary people (students, detectives, doctors, civilians, lovers), KEEP THEM EXACTLY AS DESCRIBED.
 2. PRESERVE 100% IDENTITY, POSITIONS & POSES: Keep all exact character names, spatial positions (e.g. left side, right side, sitting behind desk, reclining on bed, standing), poses, facial expressions, physical features, hair styles, clothing, and the specific story situation completely faithful to the original scene.
-3. ${isPG17or18 ? `HANDLING ROMANTIC, SENSUAL & EROTIC THEMES (${isPG18 ? "PG-18" : "PG-17"} MAXIMUM BOUNDARY RULE):
-   - The user requested ${isPG18 ? "PG-18" : "PG-17"} mature storytelling. When romantic, sensual, erotic, or intimate elements are present:
-     * NEVER strip away the romance, allure, or passionate chemistry!
+3. HANDLING ROMANTIC, SENSUAL & EROTIC THEMES (PRESERVE 100% PASSION - ZERO STORY DISCONNECT):
+   - When romantic, sensual, erotic, or intimate elements are present:
+     * NEVER strip away the romance, allure, intimacy, or passionate chemistry! NEVER turn a lovers' bedroom scene into tea drinking or distant friendly conversation!
      * STRICT SAFETY FILTER COMPLIANCE: Zero explicit genitalia, zero pornographic anatomy, zero direct forbidden nudity (to guarantee 100% zero filter blocks).
-     * MAXIMIZE PASSION & SENSUALITY WITHIN ALLOWED BOUNDARIES: Frame intimate scenes with tasteful cinematic elegance: artistic silhouette backlighting, warm candlelight or moonlight, parted lips, heavy seductive bedroom eyes, flushed cheeks, bodies entwined in close passionate embrace, unbuttoned loose silk shirts, draped satin bedsheets, and breathless romantic tension. The goal is the highest allowable artistic adult graphic novel eroticism!` : `SAFELY SOFTEN SENSUALITY:
-   - Convert provocative or sensual poses into standard friendly interactions with standard character attire.`}
-4. SAFELY SOFTEN VIOLENCE & PROHIBITED THEMES:
-   - STRICT ZERO TOLERANCE for blood, gore, open wounds, executions, point-blank headshots, corpses, real-world terrorism, torture.
-   - If the scene is romantic or emotional: Convert any tension into gentle romantic proximity, earnest eye contact, or poignant dialogue—NEVER introduce weapons, ninjas, combat moves, or martial arts!
-   - If the scene is action-oriented: Convert lethal violence into PG-13 dramatic comic tension: dodging, intense facial expressions, speech confrontations, shadows, and non-lethal impact bursts.
+     * MAXIMIZE PASSION & SENSUALITY WITHIN ALLOWED BOUNDARIES: Frame intimate scenes with tasteful cinematic elegance: artistic silhouette backlighting, warm candlelight or moonlight, parted lips, heavy seductive bedroom eyes, flushed cheeks, bodies entwined in close passionate embrace, unbuttoned loose silk shirts, draped satin bedsheets wrapped around hips, bare shoulders and arched backs, and breathless romantic tension. The goal is the highest allowable artistic adult graphic novel eroticism!
+4. HANDLING VIOLENCE, ACTION & THRILLER THEMES (PRESERVE 100% GRIT & NOIR SUSPENSE):
+   - STRICT ZERO TOLERANCE for prohibited medical gore, severed limbs, viscera, or corpses.
+   - PRESERVE 100% PHYSICAL IMPACT & DANGER: Use stylized dark crimson comic accents, bruised cheekbones, scratched knuckles, torn tactical shirts, sweat, dirt, clenched jaw in pain, weapons aimed in tense noir standoffs, glinting steel blades, smoking barrels, and broken surroundings.
+   - NEVER reduce a serious life-or-death confrontation into a cartoon dodge, harmless joke, or playful disagreement!
 5. ${formatNotice}
 6. Art Style: Standard Graphic Novel Comic Art style, crisp black inking, clean cel-shading, rich colors.
 7. Return ONLY the final English rewritten image prompt text. Do not output quotes, preamble, or conversational filler.`;
@@ -1214,15 +1224,18 @@ async function generateImageWithFallback(
   const falKey = getFalApiKey();
   const togetherKey = getTogetherApiKey();
 
+  // Step 1: Pre-sanitize the prompt with our FINE BALANCE safety filters (translates sensitive terms into filter-safe graphic novel art across ALL providers)
+  const sanitizedPrompt = sanitizePromptForSafety(prompt, contentRating, modestyTechnique);
+
   // If user explicitly selected fal.ai FLUX
   if (imageProvider === "fal_flux") {
     console.log("[ImageGen] Mode: fal.ai FLUX. Direct generation...");
     try {
-      return await generateImageViaFalFlux(prompt, aspectRatio, isFullPage, contentRating, renderQuality);
+      return await generateImageViaFalFlux(sanitizedPrompt, aspectRatio, isFullPage, contentRating, renderQuality);
     } catch (falErr: any) {
       console.warn("[ImageGen] fal.ai failed:", falErr?.message || falErr);
       console.log("[ImageGen] Falling back to Free Pollinations FLUX...");
-      return await generateImageViaPollinations(prompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
+      return await generateImageViaPollinations(sanitizedPrompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
     }
   }
 
@@ -1230,18 +1243,18 @@ async function generateImageWithFallback(
   if (imageProvider === "together_flux") {
     console.log("[ImageGen] Mode: Together AI FLUX. Direct generation...");
     try {
-      return await generateImageViaTogetherFlux(prompt, aspectRatio, isFullPage, contentRating, renderQuality);
+      return await generateImageViaTogetherFlux(sanitizedPrompt, aspectRatio, isFullPage, contentRating, renderQuality);
     } catch (togetherErr: any) {
       console.warn("[ImageGen] Together AI failed:", togetherErr?.message || togetherErr);
       console.log("[ImageGen] Falling back to Free Pollinations FLUX...");
-      return await generateImageViaPollinations(prompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
+      return await generateImageViaPollinations(sanitizedPrompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
     }
   }
 
   // If user selected 100% Free FLUX (Pollinations), skip Gemini image calls completely!
   if (imageProvider === "pollinations_flux") {
     console.log(`[ImageGen] Mode: 100% Free FLUX (Pollinations.ai, model: ${pollinationsModel || "flux"}). Direct free generation...`);
-    return await generateImageViaPollinations(prompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
+    return await generateImageViaPollinations(sanitizedPrompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
   }
 
   // If auto and fal or Together key is present, prefer fast dedicated FLUX!
@@ -1249,7 +1262,7 @@ async function generateImageWithFallback(
     if (falKey) {
       try {
         console.log("[ImageGen] Auto mode: fal.ai key active! Using fal.ai FLUX...");
-        return await generateImageViaFalFlux(prompt, aspectRatio, isFullPage, contentRating, renderQuality);
+        return await generateImageViaFalFlux(sanitizedPrompt, aspectRatio, isFullPage, contentRating, renderQuality);
       } catch (autoFalErr: any) {
         console.warn("[ImageGen] Auto fal.ai attempt failed, continuing:", autoFalErr?.message);
       }
@@ -1257,7 +1270,7 @@ async function generateImageWithFallback(
     if (togetherKey) {
       try {
         console.log("[ImageGen] Auto mode: Together AI key active! Using Together FLUX...");
-        return await generateImageViaTogetherFlux(prompt, aspectRatio, isFullPage, contentRating, renderQuality);
+        return await generateImageViaTogetherFlux(sanitizedPrompt, aspectRatio, isFullPage, contentRating, renderQuality);
       } catch (autoTogetherErr: any) {
         console.warn("[ImageGen] Auto Together attempt failed, continuing:", autoTogetherErr?.message);
       }
@@ -1269,7 +1282,7 @@ async function generateImageWithFallback(
     if (falKey) {
       try {
         console.log("[ImageGen] Gemini circuit open. Using fal.ai FLUX...");
-        return await generateImageViaFalFlux(prompt, aspectRatio, isFullPage, contentRating, renderQuality);
+        return await generateImageViaFalFlux(sanitizedPrompt, aspectRatio, isFullPage, contentRating, renderQuality);
       } catch (e) {
         console.warn("[ImageGen] fal.ai fallback error:", e);
       }
@@ -1277,20 +1290,17 @@ async function generateImageWithFallback(
     if (togetherKey) {
       try {
         console.log("[ImageGen] Gemini circuit open. Using Together AI FLUX...");
-        return await generateImageViaTogetherFlux(prompt, aspectRatio, isFullPage, contentRating, renderQuality);
+        return await generateImageViaTogetherFlux(sanitizedPrompt, aspectRatio, isFullPage, contentRating, renderQuality);
       } catch (e) {
         console.warn("[ImageGen] Together fallback error:", e);
       }
     }
     console.log("[ImageGen] Gemini circuit open (quota reached). Seamlessly falling back to Free FLUX (Pollinations)...");
-    return await generateImageViaPollinations(prompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
+    return await generateImageViaPollinations(sanitizedPrompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
   }
 
   let wasSafetyBlocked = false;
   let lastGeminiError: any = null;
-
-  // Step 1: Pre-sanitize the prompt with comprehensive safety filters (translates sensitive terms into PG-17/18 filter-safe sensuality)
-  const sanitizedPrompt = sanitizePromptForSafety(prompt, contentRating, modestyTechnique);
 
   // Step 2: Try primary image models with sanitized prompt (with high resolution 1K/2K)
   const ai = getAIOrNull();
@@ -1299,7 +1309,7 @@ async function generateImageWithFallback(
       throw new Error("Lütfen Google Gemini Imagen motorunu kullanmak için geçerli bir Google Gemini API anahtarı girin.");
     }
     console.log("[ImageGen] Google Gemini API anahtarı girilmemiş. Otomatik olarak %100 Ücretsiz FLUX motoruna geçiliyor...");
-    return await generateImageViaPollinations(prompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
+    return await generateImageViaPollinations(sanitizedPrompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
   }
 
   for (const model of IMAGE_MODELS) {
@@ -2472,10 +2482,14 @@ export function generateProceduralComicScript(
       
       const otherChar = cast.find(c => !activeCharNames.includes(c.name))?.name || char2;
 
+      const isBeatIntimate = isIntimateOrMatureScene(beat);
       const charTokens = activeCharNames.map(cn => {
         const found = cast.find(c => isNameMatch(c.name, cn));
         const attire = found ? getCharacterCanonicalAttire(found) : null;
-        return attire ? `Featuring ${cn} (wearing their registered canonical standard attire: ${attire.outfitDescription})` : `Featuring ${cn}`;
+        if (!attire) return `Featuring ${cn}`;
+        return isBeatIntimate
+          ? `Featuring ${cn} (${attire.physicalTraits || found.description})`
+          : `Featuring ${cn} (wearing their registered canonical standard attire: ${attire.outfitDescription})`;
       }).join(", ");
 
       const shotType = i === 0 ? "Cinematic wide establishing shot" :
@@ -2764,6 +2778,8 @@ export async function generateComicScript(
   }
 
   const isRomance = isRomanceOrEmotionalTheme(config.topic, config.tone, config.intro, userDirection);
+  const isMatureSensualScene = isIntimateOrMatureScene(`${config.topic} ${config.intro} ${userDirection}`);
+  const isActionOrGritty = isGrittyOrActionScene(`${config.topic} ${config.intro} ${userDirection}`);
 
   const prompt = `
     You are an award-winning Graphic Novel Lead Writer & Storyboard Director.
@@ -2786,17 +2802,37 @@ export async function generateComicScript(
     
     ${directionPrompt}
 
-    ${isRomance ? `
-    >>> SUPREME MANDATE: ABSOLUTE ROMANCE & EMOTIONAL DEPTH (SIFIR DÖVÜŞ & KESİNLİKLE KAVGA YOK) <<<
+    ${isMatureSensualScene ? `
+    >>> MATURE SENSUAL & INTIMATE PASSION MANDATE (+18 / PG-17 İNCE DENGE PROTOKOLÜ) <<<
+    - The story or user direction presents an INTIMATE, BEDROOM, SENSUAL OR PASSIONATE MOMENT: "${config.topic} - ${userDirection || config.intro}".
+    - STRICT PROHIBITION AGAINST WATERING DOWN OR DETACHING FROM THE SCENE (KESİNLİKLE OLAYDAN KOPMA YOK!):
+      * NEVER replace the bedroom, intimate encounter, or passionate touch with innocent daily cliches like drinking coffee in a cafe, sitting on a park bench, or walking under an umbrella!
+      * NEVER convert an intimate or sensual situation into a platonic handshake or distant polite conversation!
+      * KEEP 100% OF THE SCENE'S HEAT, DESIRE, PHYSICAL CLOSENESS, AND EROTIC TENSION across all 4 panels!
+    - THE GRAPHIC NOVEL FINE BALANCE (İNCE DENGE - ASLA AI FİLTRELERİNE TAKILMAYAN MAKSİMUM TUTKU):
+      * Depict the exact progression of intimacy with artistic elegance:
+        - Panel 1: Tension, breath against neck, hands untying or sliding clothes off shoulders, intense magnetic bedroom eyes, pulled in close.
+        - Panel 2: Deep breathless kiss, bodies pressed together, falling onto the bed or couch, bare shoulders and collarbone exposed.
+        - Panel 3: High-heat intimate connection/embrace under candlelit or moonlit shadows, fingers clutching sheets or hair, flushed cheeks, parted lips.
+        - Panel 4: Electric aftermath or intense lingering connection, resting together in embrace with draped silk sheets concealing explicit anatomy, whispering in the dark.
+      * ZERO BANNED GENITALIA / ZERO PORNOGRAPHIC ANATOMY: The bodies are intimately connected, but explicit anatomy is naturally shielded by draped satin sheets, deep noir chiaroscuro shadows, bath steam, or rear over-the-shoulder camera angles.
+      * This guarantees 100% ZERO AI safety filter blocks while maintaining 100% OF THE ADULT GRAPHIC NOVEL PASSION!
+    ` : isRomance ? `
+    >>> SUPREME MANDATE: ABSOLUTE ROMANCE & EMOTIONAL DEPTH (SIFIR DÖVÜŞ & SAF ROMANTİZM) <<<
     - The story topic and theme is PURE ROMANCE, LOVE, AND HUMAN EMOTIONAL CONNECTION: "${config.topic}".
     - STRICTLY FORBIDDEN (MUTLAK YASAK):
       * NEVER introduce fights, punches, kicks, combat stances, brawls, martial arts, ninjas, weapons, guns, superheroes, villains, explosions, monsters, or violent confrontations!
-      * Under NO circumstances should peaceful character interactions (conversations at a cafe, walking together, looking into each other's eyes, confessions of love, drinking coffee, sitting on a bench, hugging, kissing) be interrupted or replaced by fighting, attackers, or action combat!
+      * Under NO circumstances should romantic interactions be interrupted by random combat or action attackers!
     - ALL ACTIONS & STAGING IN EACH PANEL MUST DEPICT ROMANCE AND INTERPERSONAL CHEMISTRY:
-      * Emotional body language: eye contact, shy blushes, warm smiles, holding hands across a table, leaning in close, gentle caresses.
-      * Romantic moments: whispering confessions, heartfelt conversations, walking together under an umbrella, sunset walks, passionate embraces, deep kisses.
-      * Narrative tension/conflict MUST be purely emotional, verbal, or relational (jealousy, misunderstanding, vulnerability, unspoken feelings), NEVER physical violence!
-    - Every 'imagePrompt' MUST describe a beautifully framed romantic graphic novel scene with warm, inviting lighting and natural human poses. NEVER describe action fighting poses!
+      * Emotional body language: eye contact, shy blushes, warm smiles, holding hands, leaning in close, gentle caresses.
+      * Romantic moments: whispering confessions, heartfelt conversations, sunset walks, passionate embraces, deep kisses.
+      * Narrative tension/conflict MUST be purely emotional, verbal, or relational, NEVER physical violence!
+    ` : isActionOrGritty ? `
+    >>> ACTION, NOIR & THRILLER FINE BALANCE (+18 ŞİDDET VE GERİLİMDE İNCE DENGE) <<<
+    - Retain 100% of the grit, high stakes, physical toll, and danger!
+    - DO NOT soften the conflict into a harmless misunderstanding, childish dodge, or cartoon dust!
+    - Show real impact: bruised cheekbones, stylized dark crimson comic scratches, ripped tactical fabric, sweating brows, desperate close-quarters struggle, weapons glinting in shadows, smoking barrels, shattered surroundings.
+    - Stay within graphic novel standards (no medical gore or severed viscera), but deliver full visceral punch and noir suspense!
     ` : `
     >>> GENRE INTEGRITY MANDATE <<<
     - The established tone and genre is "${config.tone || "General"}".
@@ -2812,19 +2848,22 @@ export async function generateComicScript(
     CRITICAL IMAGE PROMPT PRODUCTION RULES (FOR FLAWLESS VISUAL GENERATION ON FIRST DRAW):
     1. EXPLICIT CAMERA FRAMING: Every 'imagePrompt' MUST begin with a clear cinematic camera shot (e.g. "Medium close-up shot", "Dramatic wide-angle establishing shot", "Dynamic low-angle two-shot", "Over-the-shoulder reaction shot").
     2. ONE CRISP FROZEN MOMENT: Describe exactly ONE clear, focused action or emotional interaction. Do NOT overload the prompt with multiple sequential actions.
-    3. MANDATORY CHARACTER VISUAL & ATTIRE TOKENS: Whenever a character is in the panel, explicitly name them and their locked active attire: e.g. "Featuring [Name] (wearing [their locked active attire])".
+    3. MANDATORY CHARACTER VISUAL & ATTIRE TOKENS: Whenever a character is in the panel, explicitly name them and their attire: e.g. "Featuring [Name] (wearing [their attire or intimate state])".
     4. EXPRESSIONS & STAGING: Detail their exact facial expression (e.g. "wide startled eyes, clenched jaw"), bodily posture (e.g. "leaning forward aggressively over the wooden desk"), and hand gestures.
     5. ENVIRONMENT & LIGHTING: Explicitly mention the background setting details and atmospheric lighting (e.g. "in the dimly lit rainy alleyway, amber streetlamp glow reflecting on wet cobblestones").
     6. ZERO UNINVITED CHARACTERS: ONLY characters explicitly declared in the Cast list (${effectiveCast.map(c => c.name).join(", ")}) may appear. If a panel is about one specific character, DO NOT include any other character.
-    7. ABSOLUTE COSTUME LOCK & PERMANENCE ACROSS ALL 4 PANELS (TÜM KARELERDE MUTLAK AYNI KIYAFET):
-       - A comic page is a single continuous scene sequence. Characters CANNOT change clothes between panels on this page!
-       - In EVERY SINGLE PANEL (Panels 1, 2, 3, and 4), each character MUST be described wearing their EXACT SAME locked attire:
-       ${effectiveCast.map(c => `  * ${c.name} MUST WEAR: "${getCharacterCanonicalAttire(c).outfitDescription}"`).join("\n       ")}
-       - NEVER describe any character wearing a different shirt, jacket, hoodie, coat, or armor in any panel!
-       - NEVER invent random new clothing or swap colors between panels.
-    ${config.contentRating === "pg18" ? `8. PG-18 MATURE ADULT GRAPHIC NOVEL DIRECTIVE (SENSUAL PASSION & SOPHISTICATED NOIR/ADULT THEMES):
+    7. COSTUME CONSISTENCY & INTIMACY/UNDRESSING EXCEPTION (TÜM KARELERDE TUTARLI GİYİM):
+       - A comic page is a single continuous scene sequence. Characters CANNOT arbitrarily swap clothes between panels.
+       ${effectiveCast.map(c => `  * Standard Locked Attire for ${c.name}: "${getCharacterCanonicalAttire(c).outfitDescription}"`).join("\n       ")}
+       - IMPORTANT EXCEPTION FOR INTIMACY, BEDROOM OR INTENTIONAL UNDRESSING SCENES:
+         If the story/user direction explicitly describes characters undressing, in bed, sleeping, bathing, or in an intimate romantic encounter:
+         DO NOT force them to wear winter jackets, heavy coats, or tactical boots in bed!
+         Follow Rule 8 for intimate bedroom/sensual attire (e.g. unbuttoned silk shirt, silk satin sleepwear, or tastefully draped sheets over bare shoulders and backs).
+         Maintain that consistent intimate state across the bedroom sequence!
+    ${config.contentRating === "pg18" ? `8. PG-18 MATURE ADULT GRAPHIC NOVEL DIRECTIVE (SENSUAL PASSION & SOPHISTICATED NOIR/ADULT THEMES - İNCE DENGE):
        - If the story presents romantic intimacy, bedroom allure, passionate encounters, or dark edgy noir drama:
          * UNLEASH MAXIMUM SENSUAL & EMOTIONAL PASSION! Depict intense magnetic closeness, heated whispers, parting lips, breathless embraces, bare shoulders/collarbones, and seductive candlelit/moonlit ambiance.
+         * NEVER WATER DOWN TO INNOCENT CHATTING: Keep the bedroom/intimate scene 100% true to the narrative.
          * MANDATORY ARTISTIC MODESTY CONCEALMENT PROTOCOL (YASAĞA UYGUN AKILLI KAPATMA & SANSÜR):
            If characters are naked, making love, or undressed in bed together ("sevişme sahnesi", "yatakta", "çıplak"):
            THE CHARACTERS ARE UNDRESSED IN A PASSIONATE EMBRACE, BUT EXPLICIT NUDITY MUST BE ARTISTICALLY OBSCURED:
@@ -2835,13 +2874,13 @@ export async function generateComicScript(
            5. Tensel Makro (Tactile Close-Up): Macro focus on entwined hands clutching bedsheets, parted breathless lips, throat, and closed eyes.
          * Mark 'isMature: true' for any panel featuring PG-18 intimacy or high-intensity scenes.
          * Specify 'cameraAngle': e.g. "modesty_sheets", "modesty_steam", "modesty_over_shoulder", "silhouette_shadow", "close_up_eyes".
-         * Specify 'modestyConcealment': choose "sheets", "steam", "silhouette", "angles", or "macro".` : config.contentRating === "pg17" ? `8. PG-17 MATURE GRAPHIC NOVEL DIRECTIVE (SENSUAL & EROTIC TENSION TO THE HIGHEST ALLOWED ARTISTIC LIMIT):
+         * Specify 'modestyConcealment': choose "sheets", "steam", "silhouette", "angles", or "macro".` : config.contentRating === "pg17" ? `8. PG-17 MATURE GRAPHIC NOVEL DIRECTIVE (SENSUAL & EROTIC TENSION TO THE HIGHEST ALLOWED ARTISTIC LIMIT - İNCE DENGE):
        - If the user or story introduces romantic, intimate, sensual, or erotic themes (passionate glances, bedroom scenes, unbuttoned shirts, close physical embraces, whispering, kissing, intense tension):
          * MAXIMIZE ROMANTIC HEAT & SENSUAL ALLURE WITHOUT TRIPPING AI SAFETY FILTERS!
          * Depict intense magnetic chemistry, heavy bedroom eyes, seductive gazes, parted lips, breathless proximity, flushed cheeks, hands tangled in hair or caressing waist/jawline, and deep passionate kisses.
          * For bedroom or private scenes: Utilize elegant artistic framing, warm candlelight or moonlit backlighting, draped luxurious satin sheets, unbuttoned silk collars, and expressive silhouettes against shadows.
          * ZERO BANNED PROHIBITED CONTENT: Never output explicit anatomical genitalia or banned pornographic words (to guarantee 100% zero AI filter blocks). The aim is the ultimate sophisticated PG-17 romantic/sensual graphic novel art!
-       - Blood & violence: Keep stylized and non-lethal (no gore, dismemberment, or corpses).` : `8. FAMILY-SAFE PG-13 MANDATE: Zero blood, gore, severed limbs, corpses, torture, or nudity. Frame high drama through emotional depth, character interactions, dramatic facial expressions, and natural graphic novel storytelling.`}
+       - Blood & violence: Keep stylized and non-lethal (no medical gore or dismemberment, but keep bruises, scratches, and visceral intensity).` : `8. FAMILY-SAFE PG-13 MANDATE: Zero blood, gore, severed limbs, corpses, torture, or nudity. Frame high drama through emotional depth, character interactions, dramatic facial expressions, and natural graphic novel storytelling.`}
     9. MEANINGFUL DIALOGUE: Every panel MUST have punchy, natural Turkish dialogue or narrator caption (minimum 3-15 words)${config.contentRating !== "pg13" ? " with genuine emotional heat, romantic chemistry, or dramatic wit" : ""}.
     
     For each panel, provide:
@@ -3249,20 +3288,30 @@ export async function generateSinglePanelImage(
   const { inlineImageParts, referenceGuideText } = extractCharacterImageParts(matchedCharacters, 2);
 
   // 6. Build prominent character visual descriptions & mandatory attire lock (FIRST PRIORITY FOR IMAGE GENERATION)
+  // Exception: If this panel is an intimate/bedroom/undressing scene, preserve likeness & traits without forcing heavy coats/jackets onto bedding!
+  const isIntimatePanel = isIntimateOrMatureScene(panelPrompt) || 
+    /\b(undressed|bare\s+skin|bare\s+shoulder|sheets|bed|lingerie|unbuttoned|sensual|embrace|soyunuk|çıplak|çarşaf|yatak|gecelik|seviş)\b/i.test(panelPrompt);
+
   let characterLeadText = "";
   if (matchedCharacters.length === 1) {
     const mainChar = matchedCharacters[0];
     const attire = getCharacterCanonicalAttire(mainChar);
-    characterLeadText = `Featuring ${mainChar.name} (${attire.physicalTraits || mainChar.description}, wearing ${attire.outfitDescription}).`;
+    characterLeadText = isIntimatePanel
+      ? `Featuring ${mainChar.name} (${attire.physicalTraits || mainChar.description}).`
+      : `Featuring ${mainChar.name} (${attire.physicalTraits || mainChar.description}, wearing ${attire.outfitDescription}).`;
   } else if (matchedCharacters.length > 1) {
     characterLeadText = `Featuring ${matchedCharacters.map(c => {
       const attire = getCharacterCanonicalAttire(c);
-      return `${c.name} (${attire.physicalTraits || c.description}, wearing ${attire.outfitDescription})`;
+      return isIntimatePanel
+        ? `${c.name} (${attire.physicalTraits || c.description})`
+        : `${c.name} (${attire.physicalTraits || c.description}, wearing ${attire.outfitDescription})`;
     }).join(" and ")}.`;
   } else if (cast.length > 0) {
     const defaultChar = cast[0];
     const attire = getCharacterCanonicalAttire(defaultChar);
-    characterLeadText = `Featuring ${defaultChar.name} (${attire.physicalTraits || defaultChar.description}, wearing ${attire.outfitDescription}).`;
+    characterLeadText = isIntimatePanel
+      ? `Featuring ${defaultChar.name} (${attire.physicalTraits || defaultChar.description}).`
+      : `Featuring ${defaultChar.name} (${attire.physicalTraits || defaultChar.description}, wearing ${attire.outfitDescription}).`;
   }
 
   // 7. Sanitize panelPrompt to strip conflicting or legacy clothing strings
@@ -3319,9 +3368,15 @@ export async function generateSinglePanelImage(
     locationGuideText = `Setting: ${matchedLocation.name} - ${matchedLocation.visualManifest || matchedLocation.description}`;
   }
 
-  const textPrompt = `${characterLeadText} ${sanitizedPanelPrompt}.${directorStagingText ? ` Staging: ${directorStagingText}.` : ""}${locationGuideText ? ` Setting: ${locationGuideText}.` : ""}${referenceGuideText ? ` ${referenceGuideText}` : ""} Masterpiece graphic novel panel illustration in ${style || "Modern Comic"} art style. ${styleEnhancement} ${isRomance 
-    ? "Award-winning romantic graphic novel panel art, crisp clean ink outlines, soft rich cel-shading, warm atmospheric lighting, expressive facial acting with emotional warmth, zero combat, zero fighting, pure romantic graphic novel illustration, no text, no speech bubbles."
-    : "Award-winning graphic novel panel art, crisp bold black ink outlines, volumetric cel-shading, vibrant cinematic colors, impeccable human anatomy with expressive faces, atmospheric lighting, sharp focus, no text, no speech bubbles."}`;
+  const isMaturePanel = isIntimatePanel || (contentRating !== "pg13" && isRomance);
+
+  const textPrompt = `${characterLeadText} ${sanitizedPanelPrompt}.${directorStagingText ? ` Staging: ${directorStagingText}.` : ""}${locationGuideText ? ` Setting: ${locationGuideText}.` : ""}${referenceGuideText ? ` ${referenceGuideText}` : ""} Masterpiece graphic novel panel illustration in ${style || "Modern Comic"} art style. ${styleEnhancement} ${
+    isMaturePanel
+      ? "Award-winning mature graphic novel panel art, intense passionate atmosphere, seductive cinematic lighting, deep chiaroscuro rim highlights on skin, expressive emotional acting with genuine physical chemistry and desire, published adult graphic novel masterpiece standard, no text, no speech bubbles."
+      : isRomance 
+      ? "Award-winning romantic graphic novel panel art, crisp clean ink outlines, soft rich cel-shading, warm atmospheric lighting, expressive facial acting with emotional warmth, zero combat, zero fighting, pure romantic graphic novel illustration, no text, no speech bubbles."
+      : "Award-winning graphic novel panel art, crisp bold black ink outlines, volumetric cel-shading, vibrant cinematic colors, impeccable human anatomy with expressive faces, atmospheric lighting, sharp focus, no text, no speech bubbles."
+  }`;
 
   return await generateImageWithFallback(textPrompt, "1:1", inlineImageParts, false, contentRating, modestyTechnique, renderQuality, imageProvider, pollinationsModel);
 }
