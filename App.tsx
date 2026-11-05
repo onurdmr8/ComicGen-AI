@@ -449,7 +449,14 @@ export default function App() {
                  const char = castWithVisuals[i];
                  try {
                      const visualManifest = await generateVisualManifest(char.name, char.description, newConfig.style);
-                     const avatarUrl = await generateCharacterAvatar(char.name, visualManifest, newConfig.style, Boolean(newConfig.usePaidApi));
+                     const avatarUrl = await generateCharacterAvatar(
+                       char.name, 
+                       visualManifest, 
+                       newConfig.style, 
+                       Boolean(newConfig.usePaidApi),
+                       newConfig.imageProvider || "pollinations_flux",
+                       newConfig.pollinationsModel
+                     );
                      const updatedChar: Character = {
                          ...char,
                          visualManifest,

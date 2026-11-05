@@ -3,6 +3,29 @@ import path from "path";
 import fs from "fs";
 import * as geminiBackend from "./server/geminiBackend";
 
+// Automatically load .env file if present
+const envPath = path.join(process.cwd(), ".env");
+if (fs.existsSync(envPath)) {
+  try {
+    const envContent = fs.readFileSync(envPath, "utf-8");
+    for (const line of envContent.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx !== -1) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        const val = trimmed.slice(eqIdx + 1).trim().replace(/^['"]|['"]$/g, "");
+        if (key && !process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
+    console.log("[Server] Loaded environment variables from .env");
+  } catch (e) {
+    console.warn("[Server] Could not read .env file:", e);
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -53,6 +76,7 @@ async function startServer() {
 
     return geminiBackend.geminiRequestContext.run({ apiKey: userApiKey, togetherApiKey, falApiKey, pollinationsApiKey }, async () => {
       try {
+        console.log(`[API Request] Action: ${action}, Provider: ${body.imageProvider || "none"}, hasUserKey: ${Boolean(userApiKey)}`);
         let result: any;
         switch (action) {
           case "validateApiKey":

@@ -1263,7 +1263,7 @@ async function generateImageWithFallback(
   }
 
   // If circuit is open (Gemini API quota exhausted)
-  if (isCircuitOpen()) {
+  if (isCircuitOpen() && imageProvider !== "gemini") {
     if (falKey) {
       try {
         console.log("[ImageGen] Gemini circuit open. Using fal.ai FLUX...");
@@ -1285,6 +1285,7 @@ async function generateImageWithFallback(
   }
 
   let wasSafetyBlocked = false;
+  let lastGeminiError: any = null;
 
   // Step 1: Pre-sanitize the prompt with comprehensive safety filters (translates sensitive terms into PG-17/18 filter-safe sensuality)
   const sanitizedPrompt = sanitizePromptForSafety(prompt, contentRating, modestyTechnique);
@@ -1293,7 +1294,7 @@ async function generateImageWithFallback(
   const ai = getAIOrNull();
   if (!ai) {
     if (imageProvider === "gemini") {
-      throw new Error("Lütfen Google Gemini Imagen Pro motorunu kullanmak için geçerli bir Google Gemini API anahtarı girin veya %100 Ücretsiz FLUX modunu seçin.");
+      throw new Error("Lütfen Google Gemini Imagen motorunu kullanmak için geçerli bir Google Gemini API anahtarı girin.");
     }
     console.log("[ImageGen] Google Gemini API anahtarı girilmemiş. Otomatik olarak %100 Ücretsiz FLUX motoruna geçiliyor...");
     return await generateImageViaPollinations(prompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
@@ -1338,11 +1339,15 @@ async function generateImageWithFallback(
       }
     } catch (err: any) {
       console.warn(`[ImageGen] Model ${model} attempt failed:`, err?.message || err);
+      lastGeminiError = err;
       if (isDepletedOrQuotaError(err)) {
-        console.warn("[ImageGen] API credits depleted / quota reached on model", model);
-        recordQuotaError();
-        console.log("[ImageGen] Seamlessly switching to Free FLUX (Pollinations) due to Gemini quota depletion...");
-        return await generateImageViaPollinations(prompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
+        console.warn(`[ImageGen] Model ${model} quota error:`, err?.message || err);
+        if (imageProvider !== "gemini") {
+          recordQuotaError();
+          console.log("[ImageGen] Seamlessly switching to Free FLUX (Pollinations) due to Gemini quota depletion...");
+          return await generateImageViaPollinations(prompt, aspectRatio, isFullPage, contentRating, pollinationsModel);
+        }
+        continue;
       }
       const msg = String(err?.message || err);
       if (msg.includes("SAFETY") || msg.includes("PROHIBITED_CONTENT") || msg.includes("IMAGE_SAFETY")) {
@@ -1458,7 +1463,12 @@ async function generateImageWithFallback(
     }
   }
 
-  // Step 5: Final absolute guarantee - If Gemini attempts failed, fall back to Together FLUX or Pollinations FLUX so user gets a real comic image!
+  // Step 5: Final absolute guarantee
+  if (imageProvider === "gemini") {
+    console.error("[ImageGen] All Gemini image models failed for Gemini mode:", lastGeminiError?.message || lastGeminiError);
+    throw new Error(`Google Gemini görsel motoru tamamlanamadı: ${lastGeminiError?.message || "Model kota veya bağlantı hatası"}. Lütfen Gemini API anahtarınızı ve kotanızı kontrol edin.`);
+  }
+
   if (togetherKey) {
     try {
       console.log("[ImageGen] Gemini attempts exhausted. Trying Together AI FLUX...");
@@ -1711,9 +1721,9 @@ export async function generateCharacterAvatar(
   
   try {
     return await generateImageWithFallback(prompt, "4:3", [], false, "pg13", "auto", "High", imageProvider, pollinationsModel);
-  } catch (err) {
-    console.warn(`Avatar generation failed for ${name}:`, err);
-    return "";
+  } catch (err: any) {
+    console.warn(`Avatar generation failed for ${name}:`, err?.message || err);
+    throw err;
   }
 }
 
