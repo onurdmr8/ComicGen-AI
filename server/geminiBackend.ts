@@ -823,7 +823,7 @@ export async function generateImageViaPollinations(
   else if (aspectRatio === "16:9") { width = 1024; height = 576; }
   else if (aspectRatio === "9:16") { width = 576; height = 1024; }
 
-  // 2. Clean up prompt: Remove system directives, bracket tokens, keep pure scene description
+  // 2. Clean up prompt: Remove internal system tags, unwrap brackets, keep pure scene description
   const cleanScenePrompt = prompt
     .replace(/\[MASTER COMIC PANEL DIRECTIVE\]:?/gi, "")
     .replace(/\[PRIMARY SCENE ACTION & COMPOSITION\]:?/gi, "")
@@ -832,10 +832,10 @@ export async function generateImageViaPollinations(
     .replace(/\[ARTISTIC EXECUTION\]:?[\s\S]*$/gi, "")
     .replace(/\[STRICT CHARACTER EXCLUSION[^\]]*\]:?[\s\S]*?(?=\n\n|\n\[|$)/gi, "")
     .replace(/\[ATTACHED VISUAL REFERENCE[^\]]*\]:?[\s\S]*?(?=\n\n|\n\[|$)/gi, "")
-    .replace(/\[.*?\]/g, " ")
+    .replace(/[\[\]]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 750);
+    .slice(0, 1100);
 
   // Normalize model ID for 100% Free URL generation on image.pollinations.ai
   let selectedModel = (preferredModel?.trim() || "flux").toLowerCase();
@@ -2244,10 +2244,42 @@ export function generateProceduralComicScript(
   userDirection: string = ""
 ): ComicScriptResult {
   const isRomance = isRomanceOrEmotionalTheme(config.topic, config.tone, config.intro, userDirection);
-  const cast = config.cast && config.cast.length > 0 ? config.cast : [
+  
+  // Pre-detect outfit changes so procedural script uses the active attire across all panels
+  const combinedText = `${config.topic || ""} ${config.intro || ""} ${userDirection || ""}`;
+  const detectedOutfitChanges = detectOutfitChangesRegex(combinedText, config.cast || []);
+
+  const baseCast = config.cast && config.cast.length > 0 ? config.cast : [
     { name: "Kaya", description: "Esmer, kararlı bakışlı ana karakter." },
     { name: "Leyla", description: "Zarif, gizemli ve duygusal karakter." }
   ];
+
+  const cast = baseCast.map(c => {
+    const match = detectedOutfitChanges.find(oc => isNameMatch(oc.characterName, c.name));
+    if (match) {
+      const outfitId = `outfit_${generateId()}`;
+      return {
+        ...c,
+        activeOutfitId: outfitId,
+        outfits: [
+          ...(c.outfits || []),
+          {
+            id: outfitId,
+            name: match.outfitName,
+            description: match.outfitDescription,
+            isCustom: true
+          }
+        ],
+        styleSheet: {
+          ...c.styleSheet,
+          outfit: match.outfitDescription
+        },
+        visualManifest: c.visualManifest ? `${c.visualManifest} (Aktif Kıyafet: ${match.outfitDescription})` : match.outfitDescription
+      };
+    }
+    return c;
+  });
+
   const char1 = cast[0]?.name || "Kaya";
   const char2 = cast[1]?.name || (cast.length > 1 ? cast[1].name : "Gizemli Yabancı");
   const charNames = cast.length > 1 ? [char1, char2] : [char1];
@@ -2406,9 +2438,6 @@ export function generateProceduralComicScript(
     panels[1].imagePrompt += ` Specifically featuring: ${userDirection.slice(0, 100)}.`;
   }
 
-  const combinedText = `${config.topic || ""} ${config.intro || ""} ${userDirection || ""}`;
-  const detectedOutfitChanges = detectOutfitChangesRegex(combinedText, config.cast || []);
-
   return {
     layoutType: "grid-2x2",
     panels,
@@ -2426,12 +2455,42 @@ export async function generateComicScript(
     return generateProceduralComicScript(config, history, userDirection);
   }
 
-  const castDescription = config.cast
+  // 0. Pre-detect outfit changes from combined story context upfront!
+  const combinedText = `${config.topic || ""} ${config.intro || ""} ${userDirection || ""}`;
+  const preDetectedOutfitChanges = detectOutfitChangesRegex(combinedText, config.cast || []);
+
+  const effectiveCast = config.cast.map(c => {
+    const matchChange = preDetectedOutfitChanges.find(oc => isNameMatch(oc.characterName, c.name));
+    if (matchChange) {
+      const outfitId = `outfit_${generateId()}`;
+      return {
+        ...c,
+        activeOutfitId: outfitId,
+        outfits: [
+          ...(c.outfits || []),
+          {
+            id: outfitId,
+            name: matchChange.outfitName,
+            description: matchChange.outfitDescription,
+            isCustom: true
+          }
+        ],
+        styleSheet: {
+          ...c.styleSheet,
+          outfit: matchChange.outfitDescription
+        },
+        visualManifest: c.visualManifest ? `${c.visualManifest} (Aktif Kıyafet: ${matchChange.outfitDescription})` : matchChange.outfitDescription
+      };
+    }
+    return c;
+  });
+
+  const castDescription = effectiveCast
     .map((c) => {
       const attire = getCharacterCanonicalAttire(c);
       return `
 - CHARACTER: "${c.name}"
-  * CANONICAL / STANDARD ATTIRE (MANDATORY UNLESS USER STORY INPUT SPECIFICALLY COMMANDS A CLOTHING CHANGE): "${attire.outfitDescription}" [Attire Name: ${attire.outfitName}]
+  * MANDATORY LOCKED ATTIRE (MUST WEAR IN ALL 4 PANELS): "${attire.outfitDescription}" [Attire Name: ${attire.outfitName}]
   * Physical Traits & Facial Likeness: ${attire.physicalTraits || c.description}
   * Full Reference Manifest: ${attire.fullReference}
       `.trim();
@@ -2582,15 +2641,16 @@ export async function generateComicScript(
     CRITICAL IMAGE PROMPT PRODUCTION RULES (FOR FLAWLESS VISUAL GENERATION ON FIRST DRAW):
     1. EXPLICIT CAMERA FRAMING: Every 'imagePrompt' MUST begin with a clear cinematic camera shot (e.g. "Medium close-up shot", "Dramatic wide-angle establishing shot", "Dynamic low-angle two-shot", "Over-the-shoulder reaction shot").
     2. ONE CRISP FROZEN MOMENT: Describe exactly ONE clear, focused action or emotional interaction. Do NOT overload the prompt with multiple sequential actions.
-    3. MANDATORY CHARACTER VISUAL TOKENS: Whenever a character is in the panel, start by explicitly naming them: e.g. "Featuring Kaya (short dark hair, brown eyes, blue jacket over grey tee)".
+    3. MANDATORY CHARACTER VISUAL & ATTIRE TOKENS: Whenever a character is in the panel, explicitly name them and their locked active attire: e.g. "Featuring [Name] (wearing [their locked active attire])".
     4. EXPRESSIONS & STAGING: Detail their exact facial expression (e.g. "wide startled eyes, clenched jaw"), bodily posture (e.g. "leaning forward aggressively over the wooden desk"), and hand gestures.
     5. ENVIRONMENT & LIGHTING: Explicitly mention the background setting details and atmospheric lighting (e.g. "in the dimly lit rainy alleyway, amber streetlamp glow reflecting on wet cobblestones").
-    6. ZERO UNINVITED CHARACTERS: ONLY characters explicitly declared in the Cast list (${config.cast.map(c => c.name).join(", ")}) may appear. If a panel is about one specific character, DO NOT include any other character.
-    7. STRICT CANONICAL ATTIRE FIDELITY & COSTUME PERMANENCE (STANDART KIYAFETLERE MUTLAK SADAKAT):
-       - UNLESS the user's story topic, intro, or prompt explicitly commands a costume change (e.g. "smokin giydi", "pijama giyiyor", "zırhını çıkardı", "kıyafetlerini değiştirdi"), YOU MUST DRAW EACH CHARACTER IN THEIR EXACT CANONICAL / STANDARD ATTIRE IN EVERY SINGLE PANEL!
-       - In each panel's 'imagePrompt', you MUST explicitly describe their exact canonical attire: e.g. "Featuring Kaya (wearing his registered canonical standard attire: [exact jacket/shirt color and style, pants, shoes]), in [pose/action]...".
-       - NEVER invent random new clothing, NEVER swap colors, NEVER let the character randomly wear a different t-shirt or jacket.
-       - Characters CANNOT change clothes between panels unless explicitly directed by the story text.
+    6. ZERO UNINVITED CHARACTERS: ONLY characters explicitly declared in the Cast list (${effectiveCast.map(c => c.name).join(", ")}) may appear. If a panel is about one specific character, DO NOT include any other character.
+    7. ABSOLUTE COSTUME LOCK & PERMANENCE ACROSS ALL 4 PANELS (TÜM KARELERDE MUTLAK AYNI KIYAFET):
+       - A comic page is a single continuous scene sequence. Characters CANNOT change clothes between panels on this page!
+       - In EVERY SINGLE PANEL (Panels 1, 2, 3, and 4), each character MUST be described wearing their EXACT SAME locked attire:
+       ${effectiveCast.map(c => `  * ${c.name} MUST WEAR: "${getCharacterCanonicalAttire(c).outfitDescription}"`).join("\n       ")}
+       - NEVER describe any character wearing a different shirt, jacket, hoodie, coat, or armor in any panel!
+       - NEVER invent random new clothing or swap colors between panels.
     ${config.contentRating === "pg18" ? `8. PG-18 MATURE ADULT GRAPHIC NOVEL DIRECTIVE (SENSUAL PASSION & SOPHISTICATED NOIR/ADULT THEMES):
        - If the story presents romantic intimacy, bedroom allure, passionate encounters, or dark edgy noir drama:
          * UNLEASH MAXIMUM SENSUAL & EMOTIONAL PASSION! Depict intense magnetic closeness, heated whispers, parting lips, breathless embraces, bare shoulders/collarbones, and seductive candlelit/moonlit ambiance.
@@ -2736,10 +2796,8 @@ export async function generateComicScript(
     ? rawParsed.detectedOutfitChanges
     : [];
 
-  const combinedText = `${config.topic || ""} ${config.intro || ""} ${userDirection || ""}`;
-  const regexChanges = detectOutfitChangesRegex(combinedText, config.cast || []);
   const mergedOutfitChanges: DetectedOutfitChange[] = [...llmChanges];
-  regexChanges.forEach(rc => {
+  preDetectedOutfitChanges.forEach(rc => {
     if (!mergedOutfitChanges.some(mc => isNameMatch(mc.characterName, rc.characterName))) {
       mergedOutfitChanges.push(rc);
     }
@@ -2762,12 +2820,12 @@ export async function generateComicScript(
     let panelChars: string[] = [];
     if (Array.isArray(p.characterNames) && p.characterNames.length > 0) {
       panelChars = p.characterNames.filter((cn: string) => 
-        config.cast.some(c => isNameMatch(c.name, cn))
+        effectiveCast.some(c => isNameMatch(c.name, cn))
       );
     }
     // 2. If empty, check imagePrompt and dialogue
     if (panelChars.length === 0) {
-      const mentioned = config.cast.filter(c => 
+      const mentioned = effectiveCast.filter(c => 
         isCharacterMentioned(c.name, p.imagePrompt || "") || 
         isCharacterMentioned(c.name, p.dialogue || "")
       );
@@ -2779,17 +2837,21 @@ export async function generateComicScript(
     if (panelChars.length === 0) {
       if (focalCharacters.length > 0) {
         panelChars = [focalCharacters[0].name];
-      } else if (config.cast.length > 0) {
-        panelChars = [config.cast[0].name];
+      } else if (effectiveCast.length > 0) {
+        panelChars = [effectiveCast[0].name];
       }
     }
 
     const primaryCharName = panelChars[0] || "Hero";
-    const pPrompt = typeof p.imagePrompt === "string" && p.imagePrompt.trim() 
+    let pPrompt = typeof p.imagePrompt === "string" && p.imagePrompt.trim() 
       ? p.imagePrompt 
       : isRomance
       ? `Emotive romantic graphic novel panel ${idx + 1} for ${config.topic}. Featuring ${primaryCharName} with gentle expressive face, warm atmospheric lighting.`
       : `Dynamic comic panel ${idx + 1} for ${config.topic}. Featuring ${primaryCharName}, expressive face, dramatic lighting.`;
+
+    pPrompt = pPrompt
+      .replace(/\(short dark hair, brown eyes, blue jacket over grey tee\)/gi, "")
+      .replace(/wearing his registered canonical standard attire: \[exact jacket[^\]]*\]/gi, "");
     
     let rawDialogue = typeof p.dialogue === "string" ? p.dialogue.trim() : "";
     if (!rawDialogue || rawDialogue === "..." || rawDialogue.length < 2) {
@@ -3015,20 +3077,32 @@ export async function generateSinglePanelImage(
   // 5. Extract ONLY the avatar model sheets for the matched characters (NEVER attach an excluded character's image!)
   const { inlineImageParts, referenceGuideText } = extractCharacterImageParts(matchedCharacters, 2);
 
-  // 6. Build clean, positive character visual descriptions (avoiding confusing negative directives)
-  let characterGuideText = "";
+  // 6. Build prominent character visual descriptions & mandatory attire lock (FIRST PRIORITY FOR IMAGE GENERATION)
+  let characterLeadText = "";
   if (matchedCharacters.length === 1) {
     const mainChar = matchedCharacters[0];
     const attire = getCharacterCanonicalAttire(mainChar);
-    characterGuideText = `Featuring ${mainChar.name}: ${attire.physicalTraits || mainChar.description}. Wearing active attire: ${attire.outfitDescription}. Full visual description: ${attire.fullReference}.`;
+    characterLeadText = `Featuring ${mainChar.name} (${attire.physicalTraits || mainChar.description}, wearing ${attire.outfitDescription}).`;
   } else if (matchedCharacters.length > 1) {
-    characterGuideText = `Featuring ${matchedCharacters.map(c => {
+    characterLeadText = `Featuring ${matchedCharacters.map(c => {
       const attire = getCharacterCanonicalAttire(c);
-      return `${c.name} (${attire.physicalTraits || c.description}, wearing active attire: ${attire.outfitDescription})`;
-    }).join(" and ")} interacting together in the scene.`;
+      return `${c.name} (${attire.physicalTraits || c.description}, wearing ${attire.outfitDescription})`;
+    }).join(" and ")}.`;
   } else if (cast.length > 0) {
-    characterGuideText = `Focus on the environment and dramatic atmosphere of the graphic novel scene.`;
+    const defaultChar = cast[0];
+    const attire = getCharacterCanonicalAttire(defaultChar);
+    characterLeadText = `Featuring ${defaultChar.name} (${attire.physicalTraits || defaultChar.description}, wearing ${attire.outfitDescription}).`;
   }
+
+  // 7. Sanitize panelPrompt to strip conflicting or legacy clothing strings
+  let sanitizedPanelPrompt = panelPrompt;
+  matchedCharacters.forEach(c => {
+    sanitizedPanelPrompt = sanitizedPanelPrompt
+      .replace(new RegExp(`Featuring\\s+${c.name}\\s*\\([^)]*\\)[:\\s,.]*`, "gi"), "")
+      .replace(new RegExp(`\\[${c.name}\\s+Style\\]:[^\\]|]*`, "gi"), "")
+      .replace(/\(short dark hair, brown eyes, blue jacket over grey tee\)/gi, "")
+      .trim();
+  });
 
   let directorStagingText = "";
   if (directorConfig) {
@@ -3074,21 +3148,9 @@ export async function generateSinglePanelImage(
     locationGuideText = `Setting: ${matchedLocation.name} - ${matchedLocation.visualManifest || matchedLocation.description}`;
   }
 
-  const textPrompt = `Masterpiece graphic novel panel illustration in ${style || "Modern Comic"} art style. ${styleEnhancement}
-
-Scene Moment & Interaction:
-${panelPrompt}
-${directorStagingText ? `\nStaging & Composition:\n${directorStagingText}` : ""}
-${locationGuideText ? `\nEnvironment:\n${locationGuideText}` : ""}
-
-Characters:
-${characterGuideText}
-${referenceGuideText}
-
-Artistic Execution:
-${isRomance 
-  ? "Award-winning romantic graphic novel panel art, crisp clean ink outlines, soft rich cel-shading, warm atmospheric lighting, expressive facial acting with emotional warmth, zero combat, zero fighting, pure romantic graphic novel illustration."
-  : "Award-winning graphic novel panel art, crisp bold black ink outlines, volumetric cel-shading, vibrant cinematic colors, impeccable human anatomy with expressive faces, atmospheric lighting, sharp focus."}`;
+  const textPrompt = `${characterLeadText} ${sanitizedPanelPrompt}.${directorStagingText ? ` Staging: ${directorStagingText}.` : ""}${locationGuideText ? ` Setting: ${locationGuideText}.` : ""}${referenceGuideText ? ` ${referenceGuideText}` : ""} Masterpiece graphic novel panel illustration in ${style || "Modern Comic"} art style. ${styleEnhancement} ${isRomance 
+    ? "Award-winning romantic graphic novel panel art, crisp clean ink outlines, soft rich cel-shading, warm atmospheric lighting, expressive facial acting with emotional warmth, zero combat, zero fighting, pure romantic graphic novel illustration, no text, no speech bubbles."
+    : "Award-winning graphic novel panel art, crisp bold black ink outlines, volumetric cel-shading, vibrant cinematic colors, impeccable human anatomy with expressive faces, atmospheric lighting, sharp focus, no text, no speech bubbles."}`;
 
   return await generateImageWithFallback(textPrompt, "1:1", inlineImageParts, false, contentRating, modestyTechnique, renderQuality, imageProvider, pollinationsModel);
 }
