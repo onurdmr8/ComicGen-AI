@@ -117,7 +117,6 @@ export default function App() {
   const [pages, setPages] = useState<ComicPage[]>([]);
   const [status, setStatus] = useState<GeneratorStatus>(GeneratorStatus.IDLE);
   const [isAutoFilling, setIsAutoFilling] = useState(false);
-  const [apiKeyMissing, setApiKeyMissing] = useState(false);
   
   const [showNextPageModal, setShowNextPageModal] = useState(false);
   const [userDirection, setUserDirection] = useState("");
@@ -411,13 +410,6 @@ export default function App() {
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [config, pages, hasRestored, currentStoryId]);
-
-  useEffect(() => {
-    const key = process.env.API_KEY || process.env.GEMINI_API_KEY;
-    if (!key || key === "TODO_KEYHERE" || key === "") {
-      setApiKeyMissing(true);
-    }
-  }, []);
 
   useEffect(() => {
     if (pages.length > 0) {
@@ -2357,12 +2349,6 @@ export default function App() {
                 </motion.div>
             )}
         </AnimatePresence>
-
-        {apiKeyMissing && (
-            <div className="fixed top-4 right-4 sm:top-8 sm:right-8 z-[200] bg-red-600 text-white px-4 py-2 sm:px-8 sm:py-4 border-2 sm:border-4 border-black shadow-comic font-display text-xs sm:text-xl animate-shake">
-                <Zap className="inline mr-2 fill-white w-4 h-4 sm:w-6 sm:h-6" /> API ANAHTARI EKSİK!
-            </div>
-        )}
 
         {/* Narrative Continuity & Scene Cohesion (Olay Hafızası) Modal */}
         <NarrativeMemoryModal
