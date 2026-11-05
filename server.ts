@@ -159,6 +159,18 @@ async function startServer() {
             body.pollinationsModel
           );
           break;
+        case "generateCharacterFromImage":
+          result = await geminiBackend.generateCharacterFromImage(
+            body.sourceImageBase64,
+            body.characterName,
+            body.customDirection,
+            body.style,
+            body.topic,
+            body.usePaidApi,
+            body.imageProvider,
+            body.pollinationsModel
+          );
+          break;
         case "generateLocationVisualManifest":
           result = await geminiBackend.generateLocationVisualManifest(body.name, body.description, body.type, body.style);
           break;

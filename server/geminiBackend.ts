@@ -1841,6 +1841,177 @@ STRICT CONSISTENCY RULES:
   };
 }
 
+export async function generateCharacterFromImage(
+  sourceImageBase64: string,
+  characterName?: string,
+  customDirection?: string,
+  style: string = "Modern Comic",
+  topic: string = "",
+  usePaidApi: boolean = false,
+  imageProvider: "auto" | "pollinations_flux" | "together_flux" | "fal_flux" | "gemini" = "auto",
+  pollinationsModel?: string
+): Promise<Character> {
+  const ai = getAIOrNull();
+  const imageParts: any[] = [];
+  let mimeType = "image/png";
+
+  if (sourceImageBase64 && sourceImageBase64.includes(",")) {
+    const match = sourceImageBase64.match(/^data:([^;]+);base64,(.+)$/);
+    if (match && match[2]) {
+      mimeType = match[1] || "image/png";
+      imageParts.push({
+        inlineData: {
+          mimeType,
+          data: match[2]
+        }
+      });
+    }
+  }
+
+  let finalName = characterName?.trim() || "Kahraman";
+  let finalDescription = customDirection?.trim() || "Fotoğraftan dönüştürülmüş özgün çizgi roman karakteri.";
+  let finalPhysicalTraits = "Fotoğraftaki yüz hatlarına, saç yapısına ve kararlı bakışlara sahip karakter.";
+  let finalOutfit = "Temaya uygun özel tasarım çizgi roman kostümü.";
+  let finalVisualManifest = `A heroic character adapted from reference photo in ${style} comic art style. Front view, back view, and close-up portrait.`;
+
+  // Step 1: Multimodal Vision Analysis with Gemini
+  if (ai && imageParts.length > 0) {
+    try {
+      console.log("[ImageToCharacter] Gemini Vision ile yüklenen fotoğraf analiz ediliyor...");
+      const visionPrompt = `
+      You are an elite Lead Character Designer at Marvel Comics.
+      A user uploaded a real photograph/reference image to be turned into a graphic novel comic character.
+      
+      Target Comic Art Style: "${style}"
+      Story Premise / Theme: "${topic || "General Graphic Novel Adventure"}"
+      User's Requested Direction / Role: "${customDirection || "Transform the person in the photo into a striking graphic novel character"}"
+      User's Preferred Name (if any): "${characterName || ""}"
+
+      Carefully inspect the facial anatomy, hairstyle, hair color, eye shape, age appearance, jawline, and unique features in the attached image.
+      Now, adapt this real person into an iconic comic book character for the story:
+      1. 'name': If the user provided a name, use it; otherwise create a cool Turkish character name.
+      2. 'physicalTraits': 1-2 sentences in Turkish accurately describing their face, facial bone structure, hair, eyes, and skin tone based on the photo.
+      3. 'outfit': 1-2 sentences in Turkish describing their iconic costume and gear adapted to the comic theme.
+      4. 'description': 1-2 sentences in Turkish giving their comic book background / personality.
+      5. 'visualManifest': Highly detailed English prompt segment detailing their full appearance across 3 views:
+         - Front full-body view: costume details, colors, footwear, build
+         - Back full-body view: rear hair, cape/jacket back details, equipment
+         - Close-up Portrait: exact facial features, eye color, jawline, hair texture from the photo, stylized in ${style}.
+
+      Output strict JSON only:
+      {
+        "name": "...",
+        "physicalTraits": "...",
+        "outfit": "...",
+        "description": "...",
+        "visualManifest": "..."
+      }
+      `;
+
+      const response = await ai.models.generateContent({
+        model: STORY_MODEL,
+        contents: [
+          ...imageParts,
+          visionPrompt
+        ],
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      const txt = extractTextContent(response);
+      if (txt) {
+        const parsed = parseJsonFromText(txt);
+        if (parsed) {
+          if (parsed.name && !characterName?.trim()) finalName = parsed.name;
+          if (parsed.description) finalDescription = parsed.description;
+          if (parsed.physicalTraits) finalPhysicalTraits = parsed.physicalTraits;
+          if (parsed.outfit) finalOutfit = parsed.outfit;
+          if (parsed.visualManifest) finalVisualManifest = parsed.visualManifest;
+          console.log(`[ImageToCharacter] Fotoğraf analizi tamamlandı: "${finalName}"`);
+        }
+      }
+    } catch (visErr: any) {
+      console.warn("[ImageToCharacter] Vision analiz uyarısı (varsayılanlar kullanılacak):", visErr?.message || visErr);
+    }
+  }
+
+  // Step 2: Generate the 3-Angle Comic Avatar (Front, Back, Portrait)
+  const styleEnhancement = getStyleEnhancement(style);
+  const avatarPrompt = `Masterclass 3-Part Semi-Realistic Comic Character Reference Model Sheet for "${finalName}".
+[STRICT REFERENCE LIKENESS MANDATE]:
+Transform the person from the attached reference photo into a stylized Marvel graphic novel character.
+Maintain 100% exact facial likeness, bone structure, eye shape, hairstyle, hair color, and recognizable identity from the photo!
+
+[LAYOUT]: Horizontal character turnaround sheet with THREE evenly spaced views on a clean solid neutral studio backdrop:
+1. FRONT VIEW (Ön Boydan Görünüm): Full-body standing pose showcasing complete costume: ${finalOutfit}.
+2. BACK VIEW (Arka Boydan Görünüm): Full-body rear view showcasing rear hairstyle and back of outfit/jacket/cape.
+3. CLOSE-UP PORTRAIT (Portre / Yakın Yüz): Detailed bust headshot capturing exact facial bone structure, expressive eyes, hair texture from photo in ${style} graphic novel linework.
+
+Visual Manifest: ${finalVisualManifest}.
+Art Style: ${style}. ${styleEnhancement}
+Quality: Masterpiece Marvel graphic novel draftsmanship, refined black ink contours, volumetric cinematic lighting, anatomically precise, no blur, no text, no speech bubbles.`;
+
+  console.log(`[ImageToCharacter] 3'lü model sayfası üretiliyor (Provider: ${imageProvider || "auto"})...`);
+  
+  let avatarUrl = "";
+  try {
+    avatarUrl = await generateImageWithFallback(
+      imageParts.length > 0
+        ? `Using the attached reference photo as the exact facial identity, render this stylized comic turnaround sheet:\n${avatarPrompt}`
+        : avatarPrompt,
+      "4:3",
+      imageParts,
+      false,
+      "pg13",
+      "auto",
+      "High",
+      imageProvider,
+      pollinationsModel
+    );
+  } catch (imgErr: any) {
+    console.error("[ImageToCharacter] Avatar görseli üretilemedi:", imgErr?.message || imgErr);
+    avatarUrl = sourceImageBase64;
+  }
+
+  const newCharId = generateId();
+  const defaultOutfitId = `outfit_${generateId()}`;
+
+  const character: Character = {
+    id: newCharId,
+    name: finalName,
+    description: finalDescription,
+    avatarUrl: avatarUrl || sourceImageBase64,
+    visualManifest: finalVisualManifest,
+    styleSheet: {
+      physicalTraits: finalPhysicalTraits,
+      outfit: finalOutfit,
+      accessories: "Özel ekipman ve çizgi roman aksesuarları",
+      colorPalette: ["#1E293B", "#EAB308", "#DC2626", "#F8FAFC"],
+      referencePrompt: finalVisualManifest,
+      autoInject: true,
+      lastUpdated: Date.now()
+    },
+    outfits: [
+      {
+        id: defaultOutfitId,
+        name: "Standart Kostüm",
+        description: finalOutfit,
+        isDefault: true,
+        badge: "Standart",
+        icon: "Shirt",
+        isPreset: true,
+        referencePrompt: finalOutfit
+      }
+    ],
+    activeOutfitId: defaultOutfitId,
+    createdAt: Date.now(),
+    style: style
+  };
+
+  return character;
+}
+
 export async function generateLocationVisualManifest(
   name: string,
   description: string,

@@ -629,6 +629,33 @@ export const generateCharacterVariation = async (
   );
 };
 
+export const generateCharacterFromImage = async (
+  sourceImageBase64: string,
+  characterName?: string,
+  customDirection?: string,
+  style: string = "Modern Comic",
+  topic: string = "",
+  usePaidApi: boolean = false,
+  imageProvider?: "auto" | "pollinations_flux" | "together_flux" | "fal_flux" | "gemini",
+  pollinationsModel?: string
+): Promise<Character> => {
+  const compressedImage = await downscaleBase64Image(sourceImageBase64, 768);
+  const pModel = pollinationsModel || getPollinationsModel();
+  return callBackendApi<Character>(
+    "generateCharacterFromImage",
+    {
+      sourceImageBase64: compressedImage,
+      characterName,
+      customDirection,
+      style,
+      topic,
+      usePaidApi,
+      imageProvider,
+      pollinationsModel: pModel
+    }
+  );
+};
+
 export const generateLocationVisualManifest = async (
   name: string,
   description: string,

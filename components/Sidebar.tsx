@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   Plus, Trash2, User, Play, Loader2, Sparkles, X, ChevronLeft, Zap, 
   Palette, Ghost, Info, Swords, Menu, Info as InfoIcon, RotateCcw,
   CreditCard, ShieldCheck, Check, Library, BookmarkPlus, BookmarkCheck, Search, Users, ExternalLink,
   MapPin, Compass, BookOpen, Brain, ShieldAlert, Sun, Lock, Layers, GitBranch, FileText, Shirt, Flame, Eye, EyeOff, Camera, Heart,
-  KeyRound
+  KeyRound, UploadCloud, Image as ImageIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Character, CharacterOutfit, ComicConfig, GeneratorStatus, LocationItem, NarrativeContinuityMemory, POLLINATIONS_MODELS, COMIC_ART_STYLES } from "../types";
-import { generateCharacterAvatar, generateVisualManifest, generateCharacterStyleSheet, compileCharacterReferencePrompt, COLOR_PALETTES, LIGHTING_MOODS, setPollinationsModel } from "../services/geminiService";
+import { generateCharacterAvatar, generateCharacterFromImage, generateVisualManifest, generateCharacterStyleSheet, compileCharacterReferencePrompt, COLOR_PALETTES, LIGHTING_MOODS, setPollinationsModel } from "../services/geminiService";
 import { generateId, cn } from "../lib/utils";
 import { DEFAULT_OUTFIT_PRESETS, getCharacterActiveOutfit } from "../lib/outfitPresets";
 import { 
@@ -75,6 +75,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [newCharDesc, setNewCharDesc] = useState("");
   const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false);
   const [previewCharInfo, setPreviewCharInfo] = useState<{ url: string; name: string; mode?: CharacterViewMode } | null>(null);
+
+  // Image-to-Character states
+  const [characterCreationMode, setCharacterCreationMode] = useState<"text" | "image">("text");
+  const [uploadedImageBase64, setUploadedImageBase64] = useState<string | null>(null);
+  const [imageCharName, setImageCharName] = useState("");
+  const [imageCharPrompt, setImageCharPrompt] = useState("");
+  const [isGeneratingFromImage, setIsGeneratingFromImage] = useState(false);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
   
   // Character Library states
   const [libraryCharacters, setLibraryCharacters] = useState<Character[]>([]);
@@ -245,6 +253,62 @@ export const Sidebar: React.FC<SidebarProps> = ({
         showToast(`${newChar.name} kadroya eklendi!`);
     } finally {
         setIsGeneratingAvatar(false);
+    }
+  };
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showToast("Lütfen geçerli bir görsel dosyası seçin!");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setUploadedImageBase64(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCreateCharacterFromImage = async () => {
+    if (!uploadedImageBase64) {
+      showToast("Lütfen önce bir fotoğraf yükleyin!");
+      return;
+    }
+    if (config.cast.length >= 10) {
+      showToast("Kadro sınırı (10 karakter) doldu!");
+      return;
+    }
+
+    setIsGeneratingFromImage(true);
+    try {
+      showToast("Fotoğraf analiz ediliyor ve temaya uyarlanıyor...");
+      const newChar = await generateCharacterFromImage(
+        uploadedImageBase64,
+        imageCharName.trim() || undefined,
+        imageCharPrompt.trim() || undefined,
+        config.style,
+        config.topic,
+        Boolean(config.usePaidApi),
+        config.imageProvider || "pollinations_flux",
+        config.pollinationsModel
+      );
+
+      setConfig(prev => ({ ...prev, cast: [...prev.cast, newChar] }));
+      await saveCharacterToLibrary(newChar);
+      await refreshLibrary();
+      setUploadedImageBase64(null);
+      setImageCharName("");
+      setImageCharPrompt("");
+      if (imageFileInputRef.current) imageFileInputRef.current.value = "";
+      showToast(`✨ ${newChar.name} fotoğraftan başarıyla üretildi ve kadroya eklendi!`);
+    } catch (err: any) {
+      console.error("Image to character error:", err);
+      showToast("Görselden karakter üretilirken bir hata oluştu.");
+    } finally {
+      setIsGeneratingFromImage(false);
     }
   };
 
@@ -1457,10 +1521,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             {castSubTab === "cast" ? (
                                 <>
                                     {/* Create Character Card */}
-                                    <div className="bg-slate-800 border-4 border-black p-4 space-y-3.5 shadow-comic">
+                                    <div className="bg-slate-800 border-4 border-black p-4 space-y-3 shadow-comic">
                                         <div className="flex items-center justify-between">
                                             <h3 className="font-display text-sm uppercase text-white flex items-center gap-2">
-                                                <Plus size={16} className="text-yellow-400" /> Karakter Tasarla (Ön / Arka / Portre)
+                                                <Plus size={16} className="text-yellow-400" /> Karakter Tasarla
                                             </h3>
                                             <span className={cn(
                                                 "text-[10px] font-mono font-bold px-1.5 py-0.5 border border-black",
@@ -1470,47 +1534,165 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                             </span>
                                         </div>
 
-                                        <div className="space-y-2.5">
-                                            <input
-                                                type="text"
-                                                placeholder="Karakter İsmi"
-                                                className="w-full bg-slate-900 border-2 border-black p-2 text-xs font-comic focus:border-yellow-400 outline-none"
-                                                value={newCharName}
-                                                onChange={(e) => setNewCharName(e.target.value)}
-                                            />
-                                            <textarea
-                                                placeholder="Fiziksel özellikler, saç, kıyafet (Ön ve arka boydan görünüm ile yakın portresi otomatik çizilir)..."
-                                                className="w-full bg-slate-900 border-2 border-black p-2 text-xs font-comic focus:border-yellow-400 outline-none h-18 resize-none"
-                                                value={newCharDesc}
-                                                onChange={(e) => setNewCharDesc(e.target.value)}
-                                            />
-                                            <div className="flex items-center gap-1.5 text-[10px] text-yellow-300 font-mono bg-yellow-400/10 px-2 py-1.5 border border-yellow-400/30">
-                                                <Sparkles size={12} className="text-yellow-400 flex-shrink-0" />
-                                                <span>Model sayfası karakteri Ön Görünüm, Arka Görünüm ve Yakın Portre olarak üretir.</span>
-                                            </div>
+                                        {/* Hidden File Input for Image Upload */}
+                                        <input 
+                                            type="file"
+                                            ref={imageFileInputRef}
+                                            onChange={handleImageFileChange}
+                                            accept="image/png,image/jpeg,image/webp,image/jpg"
+                                            className="hidden"
+                                        />
 
-                                            <div className="grid grid-cols-1 gap-2 pt-1">
-                                                <button
-                                                    onClick={handleAddCharacter}
-                                                    disabled={!newCharName.trim() || isGeneratingAvatar || config.cast.length >= 10}
-                                                    className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-display uppercase tracking-wider py-2 border-2 border-black shadow-comic transition-all disabled:opacity-50 text-xs"
-                                                >
-                                                    {isGeneratingAvatar ? (
-                                                        <Loader2 size={14} className="animate-spin mx-auto" />
-                                                    ) : (
-                                                        config.cast.length >= 10 ? "Kadro Dolu (Maks. 10)" : "3'lü Model Çıkar (Ön / Arka / Portre)"
-                                                    )}
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsLibraryModalOpen(true)}
-                                                    className="w-full bg-slate-900 hover:bg-slate-700 text-yellow-400 font-display uppercase tracking-wider py-1.5 border-2 border-black transition-all text-[11px] flex items-center justify-center gap-1.5"
-                                                >
-                                                    <Library size={13} /> Kütüphaneden Karakter Seç
-                                                </button>
-                                            </div>
+                                        {/* Creation Mode Switcher: Text vs Image */}
+                                        <div className="grid grid-cols-2 gap-1 bg-black border-2 border-black p-1 shadow-inner">
+                                            <button
+                                                type="button"
+                                                onClick={() => setCharacterCreationMode("text")}
+                                                className={cn(
+                                                    "py-1 text-[11px] font-display uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border border-black",
+                                                    characterCreationMode === "text"
+                                                        ? "bg-yellow-400 text-black shadow-inner"
+                                                        : "bg-slate-900 text-slate-400 hover:text-white"
+                                                )}
+                                            >
+                                                <Sparkles size={12} /> Metinle
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setCharacterCreationMode("image")}
+                                                className={cn(
+                                                    "py-1 text-[11px] font-display uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border border-black relative",
+                                                    characterCreationMode === "image"
+                                                        ? "bg-yellow-400 text-black shadow-inner"
+                                                        : "bg-slate-900 text-slate-400 hover:text-white"
+                                                )}
+                                            >
+                                                <Camera size={12} /> Görselden
+                                                <span className="text-[8px] bg-red-600 text-white px-1 py-0.2 font-mono uppercase font-bold">YENİ</span>
+                                            </button>
                                         </div>
+
+                                        {characterCreationMode === "text" ? (
+                                            <div className="space-y-2.5">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Karakter İsmi"
+                                                    className="w-full bg-slate-900 border-2 border-black p-2 text-xs font-comic focus:border-yellow-400 outline-none"
+                                                    value={newCharName}
+                                                    onChange={(e) => setNewCharName(e.target.value)}
+                                                />
+                                                <textarea
+                                                    placeholder="Fiziksel özellikler, saç, kıyafet (Ön ve arka boydan görünüm ile yakın portresi otomatik çizilir)..."
+                                                    className="w-full bg-slate-900 border-2 border-black p-2 text-xs font-comic focus:border-yellow-400 outline-none h-18 resize-none"
+                                                    value={newCharDesc}
+                                                    onChange={(e) => setNewCharDesc(e.target.value)}
+                                                />
+                                                <div className="flex items-center gap-1.5 text-[10px] text-yellow-300 font-mono bg-yellow-400/10 px-2 py-1.5 border border-yellow-400/30">
+                                                    <Sparkles size={12} className="text-yellow-400 flex-shrink-0" />
+                                                    <span>Model sayfası karakteri Ön Görünüm, Arka Görünüm ve Yakın Portre olarak üretir.</span>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 gap-2 pt-1">
+                                                    <button
+                                                        onClick={handleAddCharacter}
+                                                        disabled={!newCharName.trim() || isGeneratingAvatar || config.cast.length >= 10}
+                                                        className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-display uppercase tracking-wider py-2 border-2 border-black shadow-comic transition-all disabled:opacity-50 text-xs"
+                                                    >
+                                                        {isGeneratingAvatar ? (
+                                                            <Loader2 size={14} className="animate-spin mx-auto" />
+                                                        ) : (
+                                                            config.cast.length >= 10 ? "Kadro Dolu (Maks. 10)" : "3'lü Model Çıkar (Ön / Arka / Portre)"
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            /* Image-to-Character Mode */
+                                            <div className="space-y-2.5">
+                                                {!uploadedImageBase64 ? (
+                                                    <div 
+                                                        onClick={() => imageFileInputRef.current?.click()}
+                                                        className="border-2 border-dashed border-yellow-400/60 hover:border-yellow-400 bg-slate-950 p-4 text-center cursor-pointer transition-all hover:bg-slate-900 group"
+                                                    >
+                                                        <UploadCloud size={24} className="mx-auto text-yellow-400 group-hover:scale-110 transition-transform mb-1.5" />
+                                                        <div className="text-xs font-display text-white uppercase">Fotoğraf Yükle (Yüz / Portre)</div>
+                                                        <div className="text-[10px] font-comic text-slate-400 mt-0.5">
+                                                            PNG, JPG, WEBP • Yüzün net göründüğü bir fotoğraf seçin
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="bg-slate-950 border-2 border-black p-2.5 flex items-center gap-3">
+                                                        <img 
+                                                            src={uploadedImageBase64} 
+                                                            alt="Yüklenen Görsel" 
+                                                            className="w-14 h-14 object-cover border-2 border-yellow-400 rounded-sm flex-shrink-0" 
+                                                        />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="text-xs font-display text-white uppercase flex items-center gap-1.5 truncate">
+                                                                <Check size={12} className="text-green-400" /> Referans Fotoğraf Hazır
+                                                            </div>
+                                                            <div className="text-[10px] font-comic text-slate-400">
+                                                                Yapay zeka bu yüze sadık kalarak çizecek
+                                                            </div>
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setUploadedImageBase64(null);
+                                                                    if (imageFileInputRef.current) imageFileInputRef.current.value = "";
+                                                                }}
+                                                                className="text-[10px] text-red-400 hover:text-red-300 font-mono underline mt-0.5 block"
+                                                            >
+                                                                Fotoğrafı Değiştir
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <input
+                                                    type="text"
+                                                    placeholder="Karakter İsmi (İsteğe bağlı, boşsa otomatik)"
+                                                    className="w-full bg-slate-900 border-2 border-black p-2 text-xs font-comic focus:border-yellow-400 outline-none"
+                                                    value={imageCharName}
+                                                    onChange={(e) => setImageCharName(e.target.value)}
+                                                />
+                                                <textarea
+                                                    placeholder="Karakter Teması / Rolü (İsteğe bağlı: Örn. Marvel kahramanı yap, siyah deri zırh giydir, dedektif ceketi ver)..."
+                                                    className="w-full bg-slate-900 border-2 border-black p-2 text-xs font-comic focus:border-yellow-400 outline-none h-16 resize-none"
+                                                    value={imageCharPrompt}
+                                                    onChange={(e) => setImageCharPrompt(e.target.value)}
+                                                />
+
+                                                <div className="flex items-center gap-1.5 text-[10px] text-yellow-300 font-mono bg-yellow-400/10 px-2 py-1.5 border border-yellow-400/30">
+                                                    <Camera size={12} className="text-yellow-400 flex-shrink-0" />
+                                                    <span>Yüz hatları fotoğraftan korunur ve temaya uygun 3'lü model kartı oluşturulur.</span>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 gap-2 pt-1">
+                                                    <button
+                                                        onClick={handleCreateCharacterFromImage}
+                                                        disabled={!uploadedImageBase64 || isGeneratingFromImage || config.cast.length >= 10}
+                                                        className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-display uppercase tracking-wider py-2 border-2 border-black shadow-comic transition-all disabled:opacity-50 text-xs flex items-center justify-center gap-1.5"
+                                                    >
+                                                        {isGeneratingFromImage ? (
+                                                            <>
+                                                                <Loader2 size={14} className="animate-spin" />
+                                                                <span>Karaktere Dönüştürülüyor...</span>
+                                                            </>
+                                                        ) : (
+                                                            config.cast.length >= 10 ? "Kadro Dolu (Maks. 10)" : "📸 Görseli Karaktere Dönüştür"
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsLibraryModalOpen(true)}
+                                            className="w-full bg-slate-900 hover:bg-slate-700 text-yellow-400 font-display uppercase tracking-wider py-1.5 border-2 border-black transition-all text-[11px] flex items-center justify-center gap-1.5"
+                                        >
+                                            <Library size={13} /> Kütüphaneden Karakter Seç
+                                        </button>
                                     </div>
 
                                     {/* Active Cast List with View Switcher */}

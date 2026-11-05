@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { 
   Library, Search, Plus, Trash2, Check, User, Sparkles, 
-  X, RotateCcw, Eye, ShieldCheck, Tag, Layers, BookOpen, Shirt
+  X, RotateCcw, Eye, ShieldCheck, Tag, Layers, BookOpen, Shirt,
+  UploadCloud, Camera, Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Character, CharacterOutfit, ComicConfig } from "../types";
+import { generateCharacterFromImage } from "../services/geminiService";
 import { 
   deleteCharacterFromLibrary, 
   saveCharacterToLibrary, 
@@ -39,7 +41,7 @@ export const CharacterLibraryModal: React.FC<CharacterLibraryModalProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState<"browse" | "create" | "variation">("browse");
+  const [activeTab, setActiveTab] = useState<"browse" | "create" | "image_create" | "variation">("browse");
   const [globalViewMode, setGlobalViewMode] = useState<CharacterViewMode>("all");
   const [previewChar, setPreviewChar] = useState<{ url: string; name: string; mode?: CharacterViewMode } | null>(null);
   const [selectedStyleSheetChar, setSelectedStyleSheetChar] = useState<Character | null>(null);
@@ -51,7 +53,54 @@ export const CharacterLibraryModal: React.FC<CharacterLibraryModalProps> = ({
   const [newCharStyle, setNewCharStyle] = useState("Standart Çizgi Roman");
   const [isSavingCustom, setIsSavingCustom] = useState(false);
 
+  // Image-to-Character states in modal
+  const [modalUploadedImage, setModalUploadedImage] = useState<string | null>(null);
+  const [modalImageCharName, setModalImageCharName] = useState("");
+  const [modalImageCharPrompt, setModalImageCharPrompt] = useState("");
+  const [isModalGeneratingImage, setIsModalGeneratingImage] = useState(false);
+  const modalFileInputRef = useRef<HTMLInputElement>(null);
+
   if (!isOpen) return null;
+
+  const handleModalImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setModalUploadedImage(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleModalGenerateFromImage = async () => {
+    if (!modalUploadedImage) return;
+    setIsModalGeneratingImage(true);
+    try {
+      const newChar = await generateCharacterFromImage(
+        modalUploadedImage,
+        modalImageCharName.trim() || undefined,
+        modalImageCharPrompt.trim() || undefined,
+        config.style,
+        config.topic,
+        Boolean(config.usePaidApi),
+        config.imageProvider || "pollinations_flux",
+        config.pollinationsModel
+      );
+      await saveCharacterToLibrary(newChar);
+      await onRefreshLibrary();
+      setModalUploadedImage(null);
+      setModalImageCharName("");
+      setModalImageCharPrompt("");
+      if (modalFileInputRef.current) modalFileInputRef.current.value = "";
+      setActiveTab("browse");
+    } catch (err) {
+      console.error("Modal image-to-character failed:", err);
+    } finally {
+      setIsModalGeneratingImage(false);
+    }
+  };
 
   const handleSaveStyleSheet = async (updatedChar: Character) => {
     // 1. Save to library storage
@@ -210,6 +259,18 @@ export const CharacterLibraryModal: React.FC<CharacterLibraryModalProps> = ({
                 )}
               >
                 <Plus size={14} /> Yeni Ekle
+              </button>
+              <button
+                onClick={() => setActiveTab("image_create")}
+                className={cn(
+                  "px-3.5 py-1.5 text-xs font-display uppercase tracking-wider border-2 border-black transition-all flex items-center gap-1.5 relative",
+                  activeTab === "image_create" 
+                    ? "bg-yellow-400 text-black shadow-comic font-bold" 
+                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                )}
+              >
+                <Camera size={14} /> Görselden Üret
+                <span className="text-[8px] bg-red-600 text-white px-1 font-mono uppercase font-bold">YENİ</span>
               </button>
               <button
                 onClick={() => setActiveTab("variation")}
@@ -533,6 +594,125 @@ export const CharacterLibraryModal: React.FC<CharacterLibraryModalProps> = ({
                   </button>
                 </div>
               </form>
+            )}
+
+            {activeTab === "image_create" && (
+              <div className="max-w-xl mx-auto bg-slate-900 border-4 border-black p-5 space-y-4 shadow-comic">
+                <input 
+                  type="file"
+                  ref={modalFileInputRef}
+                  onChange={handleModalImageUpload}
+                  accept="image/png,image/jpeg,image/webp,image/jpg"
+                  className="hidden"
+                />
+
+                <div className="flex items-center justify-between border-b-2 border-black pb-3">
+                  <div className="flex items-center gap-2">
+                    <Camera size={18} className="text-yellow-400" />
+                    <h3 className="font-display text-sm uppercase text-white">Fotoğraftan Karakter Üret (3'lü Model Kartı)</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("browse")}
+                    className="text-xs font-comic text-slate-400 hover:text-white"
+                  >
+                    ← Listeye Dön
+                  </button>
+                </div>
+
+                {!modalUploadedImage ? (
+                  <div 
+                    onClick={() => modalFileInputRef.current?.click()}
+                    className="border-2 border-dashed border-yellow-400/60 hover:border-yellow-400 bg-slate-950 p-6 text-center cursor-pointer transition-all hover:bg-slate-900 group"
+                  >
+                    <UploadCloud size={32} className="mx-auto text-yellow-400 group-hover:scale-110 transition-transform mb-2" />
+                    <div className="text-sm font-display text-white uppercase">Fotoğraf Yükle (Yüz / Portre)</div>
+                    <div className="text-xs font-comic text-slate-400 mt-1">
+                      PNG, JPG, WEBP • Yüzün net göründüğü bir fotoğraf seçin
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-950 border-2 border-black p-3 flex items-center gap-4">
+                    <img 
+                      src={modalUploadedImage} 
+                      alt="Referans" 
+                      className="w-16 h-16 object-cover border-2 border-yellow-400 rounded-sm flex-shrink-0" 
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-display text-white uppercase flex items-center gap-1.5">
+                        <Check size={14} className="text-green-400" /> Referans Fotoğraf Yüklendi
+                      </div>
+                      <div className="text-[11px] font-comic text-slate-400 mt-0.5">
+                        Yapay zeka bu fotoğraftaki yüz hatlarını ve saç yapısını çizgi romana uyarlayacak
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setModalUploadedImage(null);
+                          if (modalFileInputRef.current) modalFileInputRef.current.value = "";
+                        }}
+                        className="text-xs text-red-400 hover:text-red-300 font-mono underline mt-1 block"
+                      >
+                        Fotoğrafı Değiştir
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-xs font-display uppercase text-slate-300">Karakter Adı (İsteğe Bağlı)</label>
+                  <input
+                    type="text"
+                    placeholder="Örn: Demir, Kaya (Boş bırakırsanız yapay zeka belirler)"
+                    value={modalImageCharName}
+                    onChange={e => setModalImageCharName(e.target.value)}
+                    className="w-full bg-slate-950 border-2 border-black p-2.5 text-xs font-comic focus:border-yellow-400 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-display uppercase text-slate-300">Karakter Teması & Kostüm Yönergesi (İsteğe Bağlı)</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Örn: Marvel tarzı cyberpunk ajanı yap, siyah zırh giydir, dedektif ceketi ver..."
+                    value={modalImageCharPrompt}
+                    onChange={e => setModalImageCharPrompt(e.target.value)}
+                    className="w-full bg-slate-950 border-2 border-black p-2.5 text-xs font-comic focus:border-yellow-400 outline-none resize-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-yellow-300 font-mono bg-yellow-400/10 px-3 py-2 border border-yellow-400/30">
+                  <Camera size={14} className="text-yellow-400 flex-shrink-0" />
+                  <span>Karakter Ön Görünüm, Arka Görünüm ve Yakın Portre olarak 3'lü model kartı şeklinde üretilecektir.</span>
+                </div>
+
+                <div className="pt-2 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("browse")}
+                    className="px-4 py-2 bg-slate-800 text-slate-300 font-display text-xs uppercase border-2 border-black"
+                  >
+                    İptal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleModalGenerateFromImage}
+                    disabled={!modalUploadedImage || isModalGeneratingImage}
+                    className="px-5 py-2 bg-yellow-400 text-black font-display text-xs uppercase border-2 border-black shadow-comic hover:bg-yellow-300 flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isModalGeneratingImage ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>Karaktere Dönüştürülüyor...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check size={14} /> Görseli Karaktere Dönüştür
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 
