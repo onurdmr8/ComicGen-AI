@@ -214,3 +214,19 @@ export function getCharacterActiveOutfit(character: { outfits?: CharacterOutfit[
 
   return DEFAULT_OUTFIT_PRESETS[0];
 }
+
+export function pickOutfitIcon(name: string = "", description: string = ""): string {
+  const combined = `${name} ${description}`.toLowerCase();
+  if (/smokin|takım|suit|tuxedo|resmi|blazer/i.test(combined)) return "👔";
+  if (/elbise|dress|gown|abiye|etek/i.test(combined)) return "👗";
+  if (/ceket|jacket|mont|kaban|palto|trençkot|coat|deri\s+ceket/i.test(combined)) return "🧥";
+  if (/zırh|armor|yelek|muharebe|taktik/i.test(combined)) return "🛡️";
+  if (/kamuflaj|stealth|suikastçı|ninja|maske/i.test(combined)) return "🕶️";
+  if (/pijama|gecelik|sabahlık|pajama|sleep/i.test(combined)) return "🌙";
+  if (/bikini|mayo|plaj|beach|swim/i.test(combined)) return "🏖️";
+  if (/spor|tayt|fitness|crop/i.test(combined)) return "⚡";
+  if (/pelerin|cape|kahraman|superhero/i.test(combined)) return "🦸";
+  if (/büyücü|cübbe|robe|tılsım/i.test(combined)) return "🧙";
+  if (/kraliyet|taç|royal/i.test(combined)) return "👑";
+  return "👕";
+}

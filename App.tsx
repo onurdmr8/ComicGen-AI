@@ -13,6 +13,7 @@ import {
   GeneratorStatus,
   ComicPanelData,
   Character,
+  CharacterOutfit,
   LocationItem,
   PanelDirectorConfig,
   NarrativeContinuityMemory,
@@ -35,7 +36,8 @@ import {
 } from "./services/geminiService";
 import { PlusCircle, Info, Ghost, X, Send, Menu, Sparkles, Loader2, Zap, Download, ChevronRight, Book, Monitor, RotateCcw, Check, AlertTriangle, Copy, Clock, CreditCard, Brain, GitBranch, FileText, Trash2, RefreshCw, BookOpen, BookmarkCheck, BookmarkPlus, Users, KeyRound, Flame } from "lucide-react";
 import html2canvas from "html2canvas";
-import { generateId, cn } from "./lib/utils";
+import { generateId, cn, isNameMatch } from "./lib/utils";
+import { pickOutfitIcon } from "./lib/outfitPresets";
 import { applyCameraAngleToPrompt } from "./lib/cameraAnglePresets";
 import { 
   loadProject, 
@@ -550,6 +552,57 @@ export default function App() {
       }
 
       const scriptData = await generateComicScript(effectiveConfig, history, direction);
+
+      // Handle detected outfit changes from story text
+      if (scriptData.detectedOutfitChanges && scriptData.detectedOutfitChanges.length > 0) {
+        let updatedCast = [...effectiveConfig.cast];
+        const outfitNotifications: string[] = [];
+
+        scriptData.detectedOutfitChanges.forEach(change => {
+          const charIndex = updatedCast.findIndex(c => isNameMatch(c.name, change.characterName));
+          if (charIndex !== -1) {
+            const char = updatedCast[charIndex];
+            const existingOutfits = Array.isArray(char.outfits) ? [...char.outfits] : [];
+            const newOutfitId = `outfit_${generateId()}`;
+            const outfitIcon = pickOutfitIcon(change.outfitName, change.outfitDescription);
+            
+            const newOutfit: CharacterOutfit = {
+              id: newOutfitId,
+              name: change.outfitName,
+              description: change.outfitDescription,
+              badge: "Hikaye",
+              icon: outfitIcon,
+              isPreset: false,
+              isCustom: true,
+              referencePrompt: change.outfitDescription
+            };
+
+            const updatedOutfits = [...existingOutfits, newOutfit];
+            const updatedChar: Character = {
+              ...char,
+              outfits: updatedOutfits,
+              activeOutfitId: newOutfitId,
+              styleSheet: {
+                ...char.styleSheet,
+                outfit: change.outfitDescription
+              },
+              visualManifest: char.visualManifest 
+                ? `${char.visualManifest} (Aktif Kıyafet: ${change.outfitDescription})`
+                : change.outfitDescription
+            };
+
+            updatedCast[charIndex] = updatedChar;
+            saveCharacterToLibrary(updatedChar);
+            outfitNotifications.push(`${char.name} yeni kıyafeti giydi: "${change.outfitName}"`);
+          }
+        });
+
+        if (outfitNotifications.length > 0) {
+          effectiveConfig.cast = updatedCast;
+          setConfig(prev => ({ ...prev, cast: updatedCast }));
+          showStoryToast(`👗 Gardırop Güncellendi: ${outfitNotifications.join(" • ")}`);
+        }
+      }
 
       setPages((prev) =>
         prev.map((p) =>

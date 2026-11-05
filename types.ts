@@ -1,4 +1,19 @@
 
+export interface DetectedOutfitChange {
+  characterName: string;
+  outfitName: string;
+  outfitDescription: string;
+  badge?: string;
+  icon?: string;
+  reason?: string;
+}
+
+export interface ComicScriptResult {
+  layoutType: string;
+  panels: ComicPanelData[];
+  detectedOutfitChanges?: DetectedOutfitChange[];
+}
+
 export interface CharacterOutfit {
   id: string;
   name: string; // e.g. "Gündelik Sokak", "Taktik Muharebe Zırhı", "Gizli Gece Kamuflajı", "Resmi Takım", "Yırtık / Hasarlı", vb.

@@ -2,6 +2,8 @@ import { GoogleGenAI, Type, Schema, GenerateContentResponse, HarmCategory, HarmB
 import { 
   ComicConfig, 
   ComicPanelData, 
+  ComicScriptResult,
+  DetectedOutfitChange,
   Character, 
   LocationItem, 
   PanelDirectorConfig, 
@@ -2180,11 +2182,67 @@ async function generateScriptViaPollinationsFreeText(prompt: string): Promise<st
   return null;
 }
 
+export function detectOutfitChangesRegex(
+  text: string,
+  cast: Character[]
+): DetectedOutfitChange[] {
+  if (!text || !cast || cast.length === 0) return [];
+  const results: DetectedOutfitChange[] = [];
+
+  for (const char of cast) {
+    if (!char.name) continue;
+    const escapedName = char.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    
+    // Turkish pattern: <Name> ... <Outfit> ... (giydi|giyiyor|giyinmiş|kuşandı|üstüne geçirdi|çıkardı)
+    const turkishPattern = new RegExp(
+      `(?:^|[\\s,.;!?])(?:${escapedName})\\s+(?:yeni\\s+|üzerine\\s+|üstüne\\s+)?([^,.;!?]+?)\\s+(giydi|giyiyor|giyinmi[sş]|ku[sş]and[ıi]|stne\\s+geirdi|zerine\\s+geirdi|kand[ıi]|kard[ıi])`,
+      "i"
+    );
+    // English pattern: <Name> ... (changed into|wearing|dressed in) ... <Outfit>
+    const englishPattern = new RegExp(
+      `(?:^|[\\s,.;!?])(?:${escapedName})\\s+(?:is\\s+wearing|changed\\s+into|puts?\\s+on|dressed\\s+in)\\s+([^,.;!?]+)`,
+      "i"
+    );
+
+    const matchTr = text.match(turkishPattern);
+    const matchEn = text.match(englishPattern);
+
+    if (matchTr && matchTr[1]) {
+      const rawTr = matchTr[1].trim().replace(/^(bir|yeni|şık|üzerine|üstüne)\s+/i, "").trim();
+      if (rawTr.length >= 3 && !/^(bu|şu|o|ve|ile|için)$/i.test(rawTr)) {
+        const titleTr = rawTr.charAt(0).toUpperCase() + rawTr.slice(1);
+        results.push({
+          characterName: char.name,
+          outfitName: titleTr,
+          outfitDescription: `Stylish ${rawTr} attire tailored for graphic novel realism with crisp fabric folds, accurate silhouette, and rich textures.`,
+          reason: `Hikaye metninden tespit edildi ("${char.name} ${rawTr} ${matchTr[2]}")`
+        });
+        continue;
+      }
+    }
+
+    if (matchEn && matchEn[1]) {
+      const rawEn = matchEn[1].trim().replace(/^(a|an|the|new)\s+/i, "").trim();
+      if (rawEn.length >= 3) {
+        const titleEn = rawEn.charAt(0).toUpperCase() + rawEn.slice(1);
+        results.push({
+          characterName: char.name,
+          outfitName: titleEn,
+          outfitDescription: `Detailed ${rawEn} clothing with authentic material textures, proper lighting accents, and realistic graphic novel folds.`,
+          reason: `Detected from story prompt ("${char.name} dressed in ${rawEn}")`
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
 export function generateProceduralComicScript(
   config: ComicConfig,
   history: string[] = [],
   userDirection: string = ""
-): { layoutType: string; panels: ComicPanelData[] } {
+): ComicScriptResult {
   const isRomance = isRomanceOrEmotionalTheme(config.topic, config.tone, config.intro, userDirection);
   const cast = config.cast && config.cast.length > 0 ? config.cast : [
     { name: "Kaya", description: "Esmer, kararlı bakışlı ana karakter." },
@@ -2348,9 +2406,13 @@ export function generateProceduralComicScript(
     panels[1].imagePrompt += ` Specifically featuring: ${userDirection.slice(0, 100)}.`;
   }
 
+  const combinedText = `${config.topic || ""} ${config.intro || ""} ${userDirection || ""}`;
+  const detectedOutfitChanges = detectOutfitChangesRegex(combinedText, config.cast || []);
+
   return {
     layoutType: "grid-2x2",
-    panels
+    panels,
+    detectedOutfitChanges: detectedOutfitChanges.length > 0 ? detectedOutfitChanges : undefined
   };
 }
 
@@ -2358,7 +2420,7 @@ export async function generateComicScript(
   config: ComicConfig,
   history: string[],
   userDirection: string = ""
-): Promise<{ layoutType: string; panels: ComicPanelData[] }> {
+): Promise<ComicScriptResult> {
   if (isCircuitOpen()) {
     console.log("[StoryGen] Circuit open (API credits depleted/quota reached). Generating procedural comic script immediately.");
     return generateProceduralComicScript(config, history, userDirection);
@@ -2560,8 +2622,16 @@ export async function generateComicScript(
     6. 'isMature': Boolean indicating if this panel has PG-18 intimacy, sensual romance, or mature themes.
     7. 'cameraAngle': Recommended camera framing ("modesty_sheets", "modesty_steam", "modesty_over_shoulder", "silhouette_shadow", "close_up_eyes", "over_shoulder", "birds_eye", "low_angle_heroic", "dutch_tilt", "standard").
     8. 'modestyConcealment': Recommended concealment technique if intimate ("sheets", "steam", "silhouette", "angles", "macro").
+
+    >>> AUTOMATIC OUTFIT & COSTUME CHANGE DETECTION (KIYAFET DEĞİŞİMİ TESPİTİ) <<<
+    - If the user's story topic, intro, or scene direction mentions ANY character putting on, wearing, or changing into a new outfit (e.g. "Demir siyah deri ceket giydi", "Leyla kırmızı gece elbisesi giyiyor", "Ali smokin giydi", "zırhını kuşandı", "Kaya spor kıyafetlerini giydi"):
+      * Identify the characterName (must match one of: ${config.cast.map(c => c.name).join(", ")}).
+      * Give it an outfitName (e.g. "Siyah Deri Ceket", "Kırmızı Gece Elbisesi", "Smokin", "Savaş Zırhı").
+      * Give it a vivid English outfitDescription (e.g. "Sleek black motorcycle leather jacket over a charcoal crewneck, dark tactical jeans, and combat boots").
+      * Give the reason in Turkish (e.g. "Hikayede belirtildi").
+      * Return this in the top-level 'detectedOutfitChanges' array. If no costume changes are mentioned, provide an empty array [].
     
-    Return layoutType "grid-2x2" and exactly 4 panels.
+    Return layoutType "grid-2x2", exactly 4 panels, and detectedOutfitChanges.
   `;
 
   const responseSchema: Schema = {
@@ -2583,6 +2653,19 @@ export async function generateComicScript(
             modestyConcealment: { type: Type.STRING }
           },
           required: ["imagePrompt", "dialogue", "characterNames"],
+        },
+      },
+      detectedOutfitChanges: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            characterName: { type: Type.STRING },
+            outfitName: { type: Type.STRING },
+            outfitDescription: { type: Type.STRING },
+            reason: { type: Type.STRING },
+          },
+          required: ["characterName", "outfitName", "outfitDescription"],
         },
       },
     },
@@ -2647,8 +2730,20 @@ export async function generateComicScript(
     return generateProceduralComicScript(config, history, userDirection);
   }
 
-  const rawParsed = parseJsonFromText(text, { panels: [] });
+  const rawParsed = parseJsonFromText(text, { panels: [], detectedOutfitChanges: [] });
   let panels: any[] = Array.isArray(rawParsed) ? rawParsed : (rawParsed.panels || []);
+  const llmChanges: DetectedOutfitChange[] = Array.isArray(rawParsed?.detectedOutfitChanges)
+    ? rawParsed.detectedOutfitChanges
+    : [];
+
+  const combinedText = `${config.topic || ""} ${config.intro || ""} ${userDirection || ""}`;
+  const regexChanges = detectOutfitChangesRegex(combinedText, config.cast || []);
+  const mergedOutfitChanges: DetectedOutfitChange[] = [...llmChanges];
+  regexChanges.forEach(rc => {
+    if (!mergedOutfitChanges.some(mc => isNameMatch(mc.characterName, rc.characterName))) {
+      mergedOutfitChanges.push(rc);
+    }
+  });
 
   const defaultDialogues = isRomance ? [
     "Seni gördüğüm andan beri aklımdan çıkaramıyorum...",
@@ -2773,7 +2868,8 @@ export async function generateComicScript(
 
   return {
     layoutType: "grid-2x2",
-    panels: processedPanels
+    panels: processedPanels,
+    detectedOutfitChanges: mergedOutfitChanges.length > 0 ? mergedOutfitChanges : undefined
   };
 }
 
@@ -2792,7 +2888,15 @@ function extractCharacterImageParts(cast: Character[], maxImages: number = 3): {
             data: match[2]
           }
         });
-        referenceGuide.push(`[ATTACHED VISUAL REFERENCE FOR "${char.name}"]: Maintain 100% exact facial likeness, hairstyle, hair color, skin tone, eye color, and signature clothing from this attached character sheet.`);
+        const attire = getCharacterCanonicalAttire(char);
+        const hasCustomOutfit = Boolean(char.activeOutfitId && char.activeOutfitId !== "default");
+        if (hasCustomOutfit) {
+          referenceGuide.push(
+            `[ATTACHED VISUAL REFERENCE FOR "${char.name}"]: Maintain 100% exact facial likeness, facial bone structure, hairstyle, hair color, skin tone, and eye color from this attached character sheet. CRITICAL COSTUME OVERRIDE: The character has CHANGED CLOTHES into their new active outfit ("${attire.outfitName}"): "${attire.outfitDescription}". You MUST render them wearing this NEW outfit in the scene. DO NOT copy the old clothing from the character sheet!`
+          );
+        } else {
+          referenceGuide.push(`[ATTACHED VISUAL REFERENCE FOR "${char.name}"]: Maintain 100% exact facial likeness, hairstyle, hair color, skin tone, eye color, and signature clothing from this attached character sheet.`);
+        }
       }
     }
   }
@@ -2916,11 +3020,11 @@ export async function generateSinglePanelImage(
   if (matchedCharacters.length === 1) {
     const mainChar = matchedCharacters[0];
     const attire = getCharacterCanonicalAttire(mainChar);
-    characterGuideText = `Featuring ${mainChar.name}: ${attire.physicalTraits || mainChar.description}. Wearing signature attire: ${attire.outfitDescription}. Full visual description: ${attire.fullReference}.`;
+    characterGuideText = `Featuring ${mainChar.name}: ${attire.physicalTraits || mainChar.description}. Wearing active attire: ${attire.outfitDescription}. Full visual description: ${attire.fullReference}.`;
   } else if (matchedCharacters.length > 1) {
     characterGuideText = `Featuring ${matchedCharacters.map(c => {
       const attire = getCharacterCanonicalAttire(c);
-      return `${c.name} (${attire.physicalTraits || c.description}, wearing ${attire.outfitDescription})`;
+      return `${c.name} (${attire.physicalTraits || c.description}, wearing active attire: ${attire.outfitDescription})`;
     }).join(" and ")} interacting together in the scene.`;
   } else if (cast.length > 0) {
     characterGuideText = `Focus on the environment and dramatic atmosphere of the graphic novel scene.`;

@@ -1,6 +1,8 @@
 import {
   ComicConfig,
   ComicPanelData,
+  ComicScriptResult,
+  DetectedOutfitChange,
   Character,
   LocationItem,
   PanelDirectorConfig,
@@ -666,8 +668,8 @@ export const generateComicScript = async (
   config: ComicConfig,
   history: string[],
   userDirection: string = ""
-): Promise<{ layoutType: string; panels: ComicPanelData[] }> => {
-  return callBackendApi<{ layoutType: string; panels: ComicPanelData[] }>(
+): Promise<ComicScriptResult> => {
+  return callBackendApi<ComicScriptResult>(
     "generateComicScript", 
     { config: sanitizeComicConfig(config), history, userDirection }
   );
