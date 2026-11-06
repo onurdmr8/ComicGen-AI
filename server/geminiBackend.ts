@@ -2333,6 +2333,145 @@ function splitStoryInto4Beats(userDirection: string): string[] {
   return result.slice(0, 4);
 }
 
+interface EnrichedBeat {
+  sceneAction: string;
+  dialogue: string;
+  characters: string[];
+  cameraAngle: string;
+}
+
+function buildEnrichedBeatsForShortPrompt(
+  prompt: string,
+  cast: Character[],
+  locName: string,
+  isRomance: boolean,
+  isMature: boolean
+): EnrichedBeat[] {
+  const c1 = cast[0]?.name || "Kaya";
+  const c2 = cast[1]?.name || (cast.length > 1 ? cast[1].name : "Leyla");
+  const lowerPrompt = prompt.toLowerCase();
+  const lowerLoc = locName.toLowerCase();
+
+  const isBar = /bar|gece\s+kulübü|pub|içki|kokteyl|tabure|kadeh/i.test(`${lowerPrompt} ${lowerLoc}`);
+  const isCafe = /kafe|kahve|bistro|pastane|restoran|çay|lokanta/i.test(`${lowerPrompt} ${lowerLoc}`);
+  const isStreet = /sokak|cadde|yağmur|yürüyüş|gece\s+sokağı/i.test(`${lowerPrompt} ${lowerLoc}`);
+
+  if (isBar) {
+    return [
+      {
+        sceneAction: `Establishing medium shot inside the dimly lit neon-accented bar. ${c1} is sitting comfortably at the sleek polished mahogany counter with a drink, taking in the vibrant evening atmosphere.`,
+        dialogue: `${c1}: Bu mekanın ışıkları ve havası insanı her seferinde kendine çekiyor...`,
+        characters: [c1],
+        cameraAngle: "standard"
+      },
+      {
+        sceneAction: `Dynamic medium two-shot at the counter. ${c2} approaches with an engaging charismatic smile, pulling up a bar stool right beside ${c1}.`,
+        dialogue: `${c2}: Sonunda gelebildim! Bu kalabalıkta masayı tutmak pek kolay olmamıştır?`,
+        characters: [c1, c2],
+        cameraAngle: "over_shoulder"
+      },
+      {
+        sceneAction: `Intimate close-up two-shot under glowing magenta and cyan bar lights. ${c1} and ${c2} clink glasses with genuine shared laughter and intense eye contact.`,
+        dialogue: `${c1}: Şansıma boştu diyelim... O zaman kadehimizi bu güzel akşama kaldıralım mı?`,
+        characters: [c1, c2],
+        cameraAngle: "close_up_eyes"
+      },
+      {
+        sceneAction: `Warm cinematic closing shot at the bar. ${c2} leans slightly forward against the mahogany counter, looking warmly into ${c1}'s eyes as the room blurs into a soft bokeh behind them.`,
+        dialogue: `${c2}: Bütün bu gürültünün arasında sadece birbirimizi duymak bana yetiyor.`,
+        characters: [c1, c2],
+        cameraAngle: "romantic_dream"
+      }
+    ];
+  }
+
+  if (isCafe) {
+    return [
+      {
+        sceneAction: `Atmospheric wide establishing shot inside the cozy vintage cafe. ${c1} sits beside the rain-streaked window, warm steam rising softly from a cup on the rustic oak table.`,
+        dialogue: `${c1}: Şehrin karmaşasından sonra buradaki kahve kokusu bile insanı dinlendiriyor...`,
+        characters: [c1],
+        cameraAngle: "standard"
+      },
+      {
+        sceneAction: `Warm medium two-shot across the wooden table. ${c2} walks in, pulling out the chair opposite ${c1} with a bright, welcoming smile.`,
+        dialogue: `${c2}: Kusura bakma biraz geciktim ama seni gördüğüme çok sevindim!`,
+        characters: [c1, c2],
+        cameraAngle: "over_shoulder"
+      },
+      {
+        sceneAction: `Intimate close-up across the table. ${c1} and ${c2} lean in close, sharing a lively, heartfelt conversation with genuine warmth in their expressions.`,
+        dialogue: `${c1}: Hiç sorun değil, önemli olan buradasın. Anlat bakalım, neler oldu?`,
+        characters: [c1, c2],
+        cameraAngle: "close_up_eyes"
+      },
+      {
+        sceneAction: `Cinematic concluding frame of the cafe rendezvous. A gentle smile and meaningful glance pass between ${c1} and ${c2} amidst the amber Edison bulb glow.`,
+        dialogue: `${c2}: Zamanın nasıl aktığını sadece senin yanındayken unutuyorum.`,
+        characters: [c1, c2],
+        cameraAngle: "romantic_dream"
+      }
+    ];
+  }
+
+  if (isStreet) {
+    return [
+      {
+        sceneAction: `Atmospheric wide shot of the glistening city street at night. ${c1} strolls along the damp sidewalk as amber streetlamps cast long dramatic shadows.`,
+        dialogue: `${c1}: Yağmurdan sonra şehrin bu sessiz hali her zaman bir başka güzel...`,
+        characters: [c1],
+        cameraAngle: "standard"
+      },
+      {
+        sceneAction: `Dynamic medium two-shot under the streetlights. ${c2} catches up alongside ${c1}, hands casually in pockets with an affectionate, knowing smile.`,
+        dialogue: `${c2}: Bu soğukta yalnız yürümene izin vereceğimi düşünmedin herhalde?`,
+        characters: [c1, c2],
+        cameraAngle: "over_shoulder"
+      },
+      {
+        sceneAction: `Dramatic close-up two-shot. ${c1} and ${c2} stop beneath a glowing streetlamp, catching each other's gaze as a cool breeze blows past.`,
+        dialogue: `${c1}: Aslında nereye gittiğimi bilmiyordum ama seninle yürümek iyi geldi.`,
+        characters: [c1, c2],
+        cameraAngle: "close_up_eyes"
+      },
+      {
+        sceneAction: `Poignant closing two-shot on the city sidewalk. ${c2} steps closer to ${c1}, their silhouettes framed against the distant glowing metropolitan skyline.`,
+        dialogue: `${c2}: Nereye gittiğimizin ne önemi var? Yan yana olduğumuz sürece her yol güzel.`,
+        characters: [c1, c2],
+        cameraAngle: "romantic_dream"
+      }
+    ];
+  }
+
+  // General / Default Embellishment:
+  return [
+    {
+      sceneAction: `Cinematic wide establishing shot inside ${locName}. ${c1} arrives and surveys the detailed surroundings under atmospheric lighting.`,
+      dialogue: `${c1}: Buranın havasında garip bir çekim var, beklediğimden çok daha etkileyici.`,
+      characters: [c1],
+      cameraAngle: "standard"
+    },
+    {
+      sceneAction: `Medium two-shot inside ${locName}. ${c2} turns to greet ${c1}, exchanging an expressive look full of unspoken curiosity.`,
+      dialogue: `${c2}: Sonunda geldin... Seni burada görmek bütün günün yorgunluğunu aldı.`,
+      characters: [c1, c2],
+      cameraAngle: "over_shoulder"
+    },
+    {
+      sceneAction: `Intimate close-up two-shot. ${c1} and ${c2} share a meaningful moment in close proximity, smiles and eyes locked together.`,
+      dialogue: `${c1}: Konuşmamız gereken çok şey var ama önce bu anın tadını çıkaralım.`,
+      characters: [c1, c2],
+      cameraAngle: "close_up_eyes"
+    },
+    {
+      sceneAction: `Cinematic climax frame inside ${locName}. ${c1} and ${c2} standing together, sharing an impactful connection that anchors the story.`,
+      dialogue: `${c2}: Haklısın. Ne olursa olsun bu anı asla unutmayalım.`,
+      characters: [c1, c2],
+      cameraAngle: "romantic_dream"
+    }
+  ];
+}
+
 async function generateScriptViaPollinationsFreeText(prompt: string): Promise<string | null> {
   const polKey = getPollinationsApiKey();
   const headers: Record<string, string> = {
@@ -2645,7 +2784,36 @@ export function generateProceduralComicScript(
   const locName = primaryLoc.name;
   const locDesc = primaryLoc.visualManifest || primaryLoc.description;
 
-  if (userBeats.length === 4) {
+  const isShortPrompt = rawStoryText.split(/\s+/).length < 15 && 
+    !rawStoryText.includes('"') && 
+    !rawStoryText.includes('“') &&
+    rawStoryText.split(/[.!?\n;]/).filter(s => s.trim().length > 0).length < 4;
+
+  if (isShortPrompt) {
+    const enriched = buildEnrichedBeatsForShortPrompt(rawStoryText, cast, locName, isRomance, isMature);
+    panels = enriched.map((beat, i) => {
+      const activeCharNames = beat.characters;
+      const charTokens = activeCharNames.map(cn => {
+        const found = cast.find(c => isNameMatch(c.name, cn));
+        const attire = found ? getCharacterCanonicalAttire(found) : null;
+        if (!attire) return `Featuring ${cn}`;
+        return `Featuring ${cn} (${attire.physicalTraits || found.description}, wearing their registered standard attire: ${attire.outfitDescription})`;
+      }).join(", ");
+
+      const imagePrompt = `${beat.sceneAction}. ${charTokens}. Dynamic narrative comic panel, fully illustrated background environment, authentic room architecture, atmospheric lighting, sharp comic art, no text, no speech bubbles.`;
+
+      return {
+        imagePrompt,
+        dialogue: beat.dialogue,
+        onomatopoeia: "",
+        characterNames: activeCharNames,
+        layoutHint: "square",
+        isMature: Boolean(isMature && (i === 2 || i === 3)),
+        cameraAngle: beat.cameraAngle,
+        modestyConcealment: modesty
+      };
+    });
+  } else if (userBeats.length === 4) {
     // USER COMMAND: Detail and spread user's 4 beats across the 4 panels faithfully reflecting story & outfits
     panels = userBeats.map((beat, i) => {
       const mentionedChars = cast.filter(c => isCharacterMentioned(c.name, beat));
@@ -2957,17 +3125,28 @@ export async function generateComicScript(
       : config.topic;
 
   const directionPrompt = `
-    >>> SUPREME MANDATE: USER'S EXACT STORY SCENE & ACTION (DO NOT OVERRIDE) <<<
-    The user explicitly commanded the following story scene for this page:
+    >>> SUPREME MANDATE: USER'S STORY PREMISE & CREATIVE EMBELLISHMENT (KISA HİKAYEYİ GELİŞTİR & SÜSLE) <<<
+    The user provided the following story premise for this page:
     """
     ${effectiveStoryDirective}
     """
     
-    CRITICAL COMPLIANCE RULES:
-    1. STORY SCENE FIDELITY: The 4 panels of this page MUST faithfully narrate and depict the user's exact story scene: "${effectiveStoryDirective}". Spread the chronological progression of this exact scene across Panel 1, Panel 2, Panel 3, and Panel 4!
-    2. ABSOLUTE SCENE & SETTING FIDELITY: The page MUST immediately take place in the user's established setting (${(allActiveLocations[0]?.name) || "active location"})!
-    3. ZERO MISATTRIBUTION: If the user wrote about character A performing an action, character A MUST perform it.
-    4. DIALOGUE FIDELITY: The Turkish dialogue or captions in all 4 panels MUST directly reflect and advance the user's story "${effectiveStoryDirective}".
+    CRITICAL CREATIVE EXPANSION RULES:
+    1. AUTOMATIC STORY & VISUAL EMBELLISHMENT (GÖRÜNTÜ OLUŞTURMADA VE KURGUDASÜSLEME):
+       - The user prefers to provide concise, natural premises (e.g. "arkadaşlar barda oturuyor", "kafede buluşup konuşuyorlar", "romantik bir akşam").
+       - DO NOT require detailed prompts from the user! YOU MUST AUTOMATICALLY EMBELLISH AND DRAMATIZE THIS IDEA into a rich 4-panel comic progression:
+         * Panel 1: Establishing the venue and atmospheric mood (lighting, background ambiance, character settling in).
+         * Panel 2: Deepening interaction (body language, eye contact, curiosity, smiling or reacting).
+         * Panel 3: Climax / emotional or tension peak (clinking glasses, leaning in, revealing a thought, laughing, intense chemistry).
+         * Panel 4: Resolution / lasting impact (shared smile, meaningful promise, punchline, or cliffhanger).
+       - In every panel's 'imagePrompt', enrich the visual description with cinematic lighting, dynamic character postures, realistic human interactions, and a fully illustrated background environment.
+       - STRICTLY PRESERVE the cast's locked canonical attire: ${config.cast.map(c => `"${c.name}" (${getCharacterCanonicalAttire(c).outfitDescription})`).join(", ")}.
+    2. VIBRANT TURKISH DIALOGUES FOR BALLOONS (ALT BALONLARDA DOĞAL REPLİKLER):
+       - NEVER output raw prompt fragments or one-word echoes in the dialogue balloons!
+       - Write natural, witty, expressive Turkish comic dialogues formatted with speaker names (e.g. "${config.cast[0]?.name || "Karakter"}: ...").
+       - Reflect the characters' personalities, banter, emotional chemistry, and genuine human connection.
+    3. ABSOLUTE SCENE & SETTING FIDELITY: The page MUST immediately take place in the user's established setting (${(allActiveLocations[0]?.name) || "active location"})!
+    4. ZERO MISATTRIBUTION: Characters in cast must perform their respective actions authentically.
   `;
 
   const focalCharacters = config.cast.filter(c => 
