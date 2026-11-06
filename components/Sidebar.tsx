@@ -12,6 +12,11 @@ import { generateCharacterAvatar, generateCharacterFromImage, generateVisualMani
 import { generateId, cn } from "../lib/utils";
 import { DEFAULT_OUTFIT_PRESETS, getCharacterActiveOutfit } from "../lib/outfitPresets";
 import { 
+  detectLocationsClientRegex, 
+  getThematicDefaultLocation, 
+  POPULAR_LOCATION_CHIPS 
+} from "../lib/locationDetector";
+import { 
   saveCharacterToLibrary, 
   getLibraryCharacters, 
   deleteCharacterFromLibrary, 
@@ -202,6 +207,65 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const [isScanningLocations, setIsScanningLocations] = useState(false);
+
+  // Real-time automatic location detection directly from what user writes in Topic & Intro
+  useEffect(() => {
+    const combinedStory = `${config.topic || ""} ${config.intro || ""}`.trim();
+    if (!combinedStory || combinedStory.length < 4) return;
+    const detectedList = detectLocationsClientRegex(combinedStory, config.locations || []);
+    if (detectedList.length > 0) {
+      let updatedLocations = [...(config.locations || [])];
+      let newlyAdded = false;
+      for (const d of detectedList) {
+        const alreadyExists = updatedLocations.some(
+          l => l.name.trim().toLowerCase() === d.name.trim().toLowerCase() ||
+               l.name.trim().toLowerCase().includes(d.name.trim().toLowerCase()) ||
+               d.name.trim().toLowerCase().includes(l.name.trim().toLowerCase())
+        );
+        if (!alreadyExists) {
+          const newLoc: LocationItem = {
+            id: `loc_${generateId()}`,
+            name: d.name,
+            type: d.type,
+            description: d.description,
+            visualManifest: d.visualManifest,
+            tags: ["Metinden Algılandı", "Hikaye Mekanı"],
+            createdAt: Date.now()
+          };
+          // Place newly detected location at the front to serve as primary scene setting
+          updatedLocations = [newLoc, ...updatedLocations];
+          saveLocationToLibrary(newLoc);
+          newlyAdded = true;
+        }
+      }
+      if (newlyAdded) {
+        setConfig(prev => ({ ...prev, locations: updatedLocations }));
+      }
+    }
+  }, [config.topic, config.intro]);
+
+  const handleSelectQuickLocation = async (chip: typeof POPULAR_LOCATION_CHIPS[0]) => {
+    const newLoc: LocationItem = {
+      id: `loc_${generateId()}`,
+      name: chip.name,
+      type: chip.type,
+      description: chip.description,
+      visualManifest: chip.visualManifest,
+      tags: ["Hızlı Seçim", "Hikaye Mekanı"],
+      createdAt: Date.now()
+    };
+    const otherLocs = (config.locations || []).filter(
+      l => l.name.toLowerCase() !== chip.name.toLowerCase() && !l.name.toLowerCase().includes(chip.label.toLowerCase())
+    );
+    const updated = [newLoc, ...otherLocs];
+    setConfig(prev => ({ ...prev, locations: updated }));
+    await saveLocationToLibrary(newLoc);
+    showToast(`🏛️ Hikaye mekanı "${chip.name}" olarak ayarlandı!`);
+  };
+
+  const activePrimaryLocation = (config.locations && config.locations.length > 0)
+    ? config.locations[0]
+    : getThematicDefaultLocation(config.topic, config.tone, config.intro);
 
   const handleScanLocationsFromStory = async () => {
     const combinedStory = `${config.topic || ""} ${config.intro || ""}`.trim();
@@ -579,6 +643,83 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                     <div className="flex items-center gap-1.5 text-[10px] font-mono text-emerald-400 bg-emerald-950/40 px-2 py-1.5 border border-emerald-800/60">
                                         <Check size={12} className="shrink-0 text-emerald-400" />
                                         <span>Kıyafet Sadakati: Hikayede özellikle kıyafet değişimi yazılmadıkça karakterler standart kıyafetleriyle çizilir.</span>
+                                    </div>
+
+                                    {/* HİKAYEDEN OTOMATİK ALGILANAN MEKAN KARTI */}
+                                    <div className="p-3 bg-slate-900 border-2 border-yellow-400/80 shadow-comic-sm space-y-2 mt-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5 text-xs font-display text-yellow-400 tracking-wider">
+                                                <MapPin size={13} className="text-yellow-400 shrink-0" />
+                                                <span>HİKAYE MEKANI (METİNDEN ALGILANAN)</span>
+                                            </div>
+                                            <span className={cn(
+                                                "text-[10px] font-mono px-2 py-0.5 border font-bold flex items-center gap-1",
+                                                (config.locations && config.locations.length > 0)
+                                                    ? "bg-emerald-950/60 text-emerald-400 border-emerald-600/80"
+                                                    : "bg-amber-950/60 text-amber-300 border-amber-600/80"
+                                            )}>
+                                                <Check size={11} />
+                                                {(config.locations && config.locations.length > 0) ? "Metinden Eklendi" : "Otomatik Tematik"}
+                                            </span>
+                                        </div>
+
+                                        <div className="bg-black/60 p-2.5 border border-slate-700 flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-bold text-white font-comic">
+                                                        🏛️ {activePrimaryLocation.name}
+                                                    </span>
+                                                    <span className="text-[9px] uppercase px-1.5 py-0.2 bg-slate-800 text-yellow-300 border border-slate-600 font-mono">
+                                                        {activePrimaryLocation.type === 'interior' ? 'İç Mekan' : activePrimaryLocation.type === 'urban' ? 'Şehir/Sokak' : activePrimaryLocation.type === 'nature' ? 'Doğa' : activePrimaryLocation.type === 'vehicle' ? 'Araç' : 'Mekan'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-[11px] text-slate-300 font-comic italic mt-1 line-clamp-2">
+                                                    "{activePrimaryLocation.description}"
+                                                </p>
+                                            </div>
+                                            {(config.locations && config.locations.length > 0) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setConfig(prev => ({ ...prev, locations: (prev.locations || []).slice(1) }));
+                                                        showToast("Mekan kaldırıldı.");
+                                                    }}
+                                                    className="text-slate-400 hover:text-red-400 p-1 shrink-0"
+                                                    title="Bu mekanı kaldır"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Hızlı Mekan Değiştir Çipleri */}
+                                        <div className="space-y-1 pt-0.5">
+                                            <div className="text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                                                <span>⚡ Hızlı Mekan Seç / Değiştir:</span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {POPULAR_LOCATION_CHIPS.map(chip => {
+                                                    const isSelected = activePrimaryLocation.name.toLowerCase().includes(chip.name.toLowerCase()) ||
+                                                                       chip.name.toLowerCase().includes(activePrimaryLocation.name.toLowerCase());
+                                                    return (
+                                                        <button
+                                                            key={chip.name}
+                                                            type="button"
+                                                            onClick={() => handleSelectQuickLocation(chip)}
+                                                            className={cn(
+                                                                "px-2 py-0.5 text-[10px] font-mono border transition-all flex items-center gap-1",
+                                                                isSelected
+                                                                    ? "bg-yellow-400 text-black border-black font-bold shadow-xs scale-102"
+                                                                    : "bg-slate-800 text-slate-300 border-slate-700 hover:border-yellow-400 hover:text-white"
+                                                            )}
+                                                        >
+                                                            <span>{chip.icon}</span>
+                                                            <span>{chip.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 

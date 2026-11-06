@@ -18,6 +18,7 @@ import {
 } from "../types";
 import { isNameMatch, isCharacterMentioned, normalizeTurkish, POSITION_SLOTS } from "../lib/utils";
 import { formatRelationshipForPrompt } from "../lib/relationshipPresets";
+import { detectLocationsClientRegex, getThematicDefaultLocation } from "../lib/locationDetector";
 import { AsyncLocalStorage } from "async_hooks";
 
 export const geminiRequestContext = new AsyncLocalStorage<{ 
@@ -777,14 +778,13 @@ export function sanitizeAndOptimizePrompt(rawPrompt: string, targetProvider: "po
     .trim();
 
   // Ensure negative prompt for text, speech bubbles, and model sheets
-  if (!/no text/i.test(cleaned)) {
-    cleaned += ", no text, no speech bubbles";
-  }
-  if (!/no character turnaround/i.test(cleaned)) {
-    cleaned += ", full detailed scene background environment, no plain background, no empty void, no character turnaround sheet, no model sheet";
+  const negativePrompt = ", no text, no speech bubbles, full detailed scene background environment, no plain background, no empty void, no character turnaround sheet, no model sheet, no multi-view";
+  const maxMainLength = Math.max(200, 1500 - negativePrompt.length);
+  if (cleaned.length > maxMainLength) {
+    cleaned = cleaned.slice(0, maxMainLength);
   }
 
-  return cleaned.slice(0, 1150);
+  return cleaned + negativePrompt;
 }
 
 async function rewritePromptForSafety(unsafePrompt: string, isFullPage: boolean = false, contentRating: "pg13" | "pg17" | "pg18" = "pg17"): Promise<string> {
@@ -1613,8 +1613,14 @@ export function cleanModelSheetArtifacts(text: string): string {
     .replace(/\[LAYOUT\]:[^\]]*/gi, "")
     .replace(/\[STRICT CHARACTER CONTINUITY[^\]]*\]:[^\]]*/gi, "")
     .replace(/\[STRICT REFERENCE LIKENESS[^\]]*\]:[^\]]*/gi, "")
+    .replace(/\[ATTACHED VISUAL REFERENCE[^\]]*\]:[^\]]*/gi, "")
     .replace(/\b(?:character\s+reference\s+)?turnaround(?:\s+model)?(?:\s+sheet)?\b/gi, "")
     .replace(/\b(?:horizontal\s+)?(?:3|three)-view(?:\s+character)?(?:\s+model)?(?:\s+sheet)?\b/gi, "")
+    .replace(/\b(?:character\s+)?model\s+sheet\b/gi, "")
+    .replace(/\b(?:character\s+)?reference\s+sheet\b/gi, "")
+    .replace(/\bcharacter\s+sheet\b/gi, "")
+    .replace(/\bmulti(?:ple)?[- ]angle\b/gi, "")
+    .replace(/\bmulti(?:ple)?[- ]view\b/gi, "")
     .replace(/\b(?:1\.\s*)?full-length\s+front\s+(?:standing\s+)?view(?:\s+displaying[^;.,]*)?[;.,]?/gi, "")
     .replace(/\b(?:2\.\s*)?full-length\s+back\s+(?:standing\s+)?view(?:\s+showing[^;.,]*)?[;.,]?/gi, "")
     .replace(/\b(?:3\.\s*)?detailed\s+close-up\s+portrait\s+(?:bust\s+)?(?:headshot)?[^;.,]*[;.,]?/gi, "")
@@ -2444,166 +2450,7 @@ export function detectLocationsRegex(
   text: string,
   existingLocations: LocationItem[] = []
 ): DetectedLocation[] {
-  if (!text || typeof text !== "string") return [];
-  const results: DetectedLocation[] = [];
-
-  const isAlreadyPresent = (name: string): boolean => {
-    const n = name.trim().toLowerCase();
-    const existingMatch = existingLocations.some(el => {
-      const en = el.name.trim().toLowerCase();
-      return en === n || en.includes(n) || n.includes(en);
-    });
-    const resultMatch = results.some(r => {
-      const rn = r.name.trim().toLowerCase();
-      return rn === n || rn.includes(n) || n.includes(rn);
-    });
-    return existingMatch || resultMatch;
-  };
-
-  interface LocationPattern {
-    regex: RegExp;
-    name: string;
-    type: LocationType;
-    description: string;
-    visualManifest: string;
-    reasonTr: string;
-  }
-
-  const patterns: LocationPattern[] = [
-    {
-      regex: /\b(otel\s+odası|otel\s+odas[ıi]nda|otel\s+s[üu]iti|otel\s+s[üu]itinde|l[üu]ks\s+otel|otelde|penthouse|hotel\s+room|luxury\s+hotel)\b/i,
-      name: "Lüks Otel Odası",
-      type: "interior",
-      description: "Geniş pencereli, şehir manzaralı lüks otel odası; king-size yatak, saten çarşaflar ve loş abajur aydınlatması.",
-      visualManifest: "Upscale modern luxury hotel bedroom with floor-to-ceiling panoramic windows overlooking night city lights, king-size bed with crisp duvet, designer ambient lamp lighting, plush carpet, rich walnut surfaces.",
-      reasonTr: "Hikaye metninde otel odası tespit edildi"
-    },
-    {
-      regex: /\b(vintage\s+kafe|kafe(?:de|sinde)?|kahve\s+d[üu]kkan[ıi]|bistro(?:da)?|coffee\s+shop|cozy\s+cafe)\b/i,
-      name: "Vintage Kafe",
-      type: "interior",
-      description: "Ahşap masaları, buharlı kahve makineleri ve sarı Edison ampulleriyle nostaljik, samimi bir kafe ortamı.",
-      visualManifest: "Cozy vintage artisan coffee shop, rustic reclaimed oak tables, brass espresso machine, warm Edison bulb glow, blackboard menu on exposed brick wall, rain-streaked window reflections.",
-      reasonTr: "Hikaye metninde kafe/kahve mekanı tespit edildi"
-    },
-    {
-      regex: /\b(ara\s+sokak(?:ta)?|karanl[ıi]k\s+sokak|ya[ğg]murlu\s+cadde|sokak(?:ta)?|cadde(?:de)?|kald[ıi]r[ıi]m|rainy\s+street|dark\s+alley(?:way)?|neon\s+alley)\b/i,
-      name: "Karanlık Yağmurlu Sokak",
-      type: "urban",
-      description: "Islak parke taşları, sarı sokak lambaları ve neon tabelaların su birikintilerine vuran yansımalarıyla atmosferik şehir sokağı.",
-      visualManifest: "Atmospheric cinematic city alleyway in the rain, wet cobblestone reflections, amber streetlamp glow, neon signs reflecting in puddles, steam rising from street grates, gritty noir aesthetic.",
-      reasonTr: "Hikaye metninde sokak/cadde sahnesi tespit edildi"
-    },
-    {
-      regex: /\b(terk\s+edilmi[şs]\s+depo|depo(?:da|sunda)?|sanayi\s+hangar[ıi]|fabrika(?:da)?|hangar(?:da)?|abandoned\s+warehouse|industrial\s+hangar)\b/i,
-      name: "Terk Edilmiş Sanayi Deposu",
-      type: "interior",
-      description: "Kırık pencerelerden süzülen ay ışığı, paslı metal kirişler ve tozlu beton zeminle tekinsiz bir sanayi deposu.",
-      visualManifest: "Vast abandoned industrial warehouse, broken skylights with shafts of cool moonlight, rusted iron trusses, dusty cracked concrete floor, discarded wooden crates, moody chiaroscuro shadows.",
-      reasonTr: "Hikaye metninde depo/hangar tespit edildi"
-    },
-    {
-      regex: /\b(g[öo]kdelen\s+[çc]at[ıi]s[ıi]|teras(?:ta)?|[çc]at[ıi](?:da|s[ıi]nda)?|balkon(?:da)?|rooftop(?:\s+terrace)?|skyscraper\s+roof)\b/i,
-      name: "Gökdelen Çatısı",
-      type: "exterior",
-      description: "Şehrin parlayan ışıklarına tepeden bakan, rüzgarlı ve yüksek güvenlik korkuluklu gökdelen çatısı.",
-      visualManifest: "High-altitude skyscraper rooftop overlooking glowing sprawling metropolis at dusk, metal exhaust vents, wet perimeter parapet railing, wind-blown mist, cinematic wide urban depth.",
-      reasonTr: "Hikaye metninde çatı/teras mekanı tespit edildi"
-    },
-    {
-      regex: /\b(bar(?:da|[ıi]nda)?|gece\s+kul[üu]b[üu]|pub(?:da)?|meyhane(?:de)?|lounge|nightclub|jazz\s+bar)\b/i,
-      name: "Loş Gece Kulübü & Bar",
-      type: "interior",
-      description: "Koyu renk tezgahlar, renkli neon ışıklar, şişe rafları ve loş gölgelerle dolu hareketli gece mekanı.",
-      visualManifest: "Atmospheric dim-lit nightclub lounge bar, polished mahogany counter, glowing shelves of amber bottles, magenta and cyan neon rim lighting, smoky haze, plush velvet booths.",
-      reasonTr: "Hikaye metninde bar/gece kulübü tespit edildi"
-    },
-    {
-      regex: /\b(hastane(?:de|sinde)?|hastane\s+odas[ıi]|hastane\s+koridoru|klinik(?:te)?|acil\s+servis|hospital\s+room|hospital\s+corridor)\b/i,
-      name: "Hastane Odası & Koridoru",
-      type: "interior",
-      description: "Steril beyaz duvarlar, floresan ışıklar ve medikal ekipmanlarla donatılmış hastane ortamı.",
-      visualManifest: "Sterile modern hospital room and corridor, cool fluorescent overhead panel lights, stainless steel IV stands, heart monitor screens with faint green glow, glossy linoleum floors.",
-      reasonTr: "Hikaye metninde hastane/klinik ortamı tespit edildi"
-    },
-    {
-      regex: /\b(yatak\s+odas[ıi](?:nda)?|oturma\s+odas[ıi]|malik[âa]ne|villa(?:da)?|luxury\s+bedroom|mansion\s+living\s+room)\b/i,
-      name: "Lüks Yatak Odası & Rezidans",
-      type: "interior",
-      description: "Yumuşak tül perdeler, geniş yatak, şık mobilyalar ve sıcak loş aydınlatmalı özel yaşam alanı.",
-      visualManifest: "Sophisticated modern penthouse apartment bedroom, king-size bed with tumbled silk satin sheets, warm bedside lamps, sheer curtains softly billowing, warm hardwood floors.",
-      reasonTr: "Hikaye metninde yatak odası/ev mekanı tespit edildi"
-    },
-    {
-      regex: /\b(araba\s+i[çc]i|ara[çc]\s+i[çc]i|otomobil(?:de)?|taksi(?:de)?|araba(?:da)?|limuzin(?:de)?|car\s+interior|moving\s+vehicle)\b/i,
-      name: "Araç İçi / Otomobil",
-      type: "vehicle",
-      description: "Deri koltuklar, parlayan dijital gösterge paneli ve camlardan akan şehir ışıklarıyla araç içi atmosferi.",
-      visualManifest: "Cinematic sports sedan interior at night, dark stitched leather seats, illuminated digital dashboard dials with cyan glow, rain streaks on windshield, passing streetlights casting moving orange flares.",
-      reasonTr: "Hikaye metninde araç/araba içi tespit edildi"
-    },
-    {
-      regex: /\b(orman(?:da)?|a[ğg]a[çc]l[ıi]k|sahil(?:de)?|kumsal(?:da)?|plaj(?:da)?|g[öo]l\s+kenar[ıi]|deniz\s+k[ıi]y[ıi]s[ıi]|forest|beach|shoreline|lake\s+edge)\b/i,
-      name: "Sisli Doğa & Sahil",
-      type: "nature",
-      description: "Yoğun ağaçlar, puslu zemin veya dalgaların vurduğu kum taneleriyle doğal açık hava mekanı.",
-      visualManifest: "Atmospheric natural landscape, tall misty pines with filtered morning sunbeams, wet mossy earth, distant tranquil shoreline with gentle dark water reflections.",
-      reasonTr: "Hikaye metninde doğa/sahil mekanı tespit edildi"
-    },
-    {
-      regex: /\b(laboratuvar(?:da)?|gizli\s+[üu]s|kontrol\s+odas[ıi]|ara[şs]t[ıi]rma\s+merkezi|science\s+lab|high-tech\s+laboratory|control\s+room)\b/i,
-      name: "Yüksek Teknolojili Araştırma Laboratuvarı",
-      type: "interior",
-      description: "Holografik ekranlar, cam tüpler, metal çalışma masaları ve parlayan göstergelerle ileri teknoloji araştırma merkezi.",
-      visualManifest: "High-tech research laboratory, holographic computer displays casting blue ambient light, sterile steel countertops, containment glass tubes, minimalist sci-fi architectural aesthetic.",
-      reasonTr: "Hikaye metninde laboratuvar/üs tespit edildi"
-    }
-  ];
-
-  for (const p of patterns) {
-    if (p.regex.test(text) && !isAlreadyPresent(p.name)) {
-      results.push({
-        name: p.name,
-        type: p.type,
-        description: p.description,
-        visualManifest: p.visualManifest,
-        reason: p.reasonTr
-      });
-    }
-  }
-
-  // Dynamic regex for custom venues: "[Kişi/Nitelik] [Mekan] (odasında|salonunda|ofisinde|evinde|kütüphanesinde|bahçesinde|restoranında|dükkanında)"
-  // e.g. "Kaya'nın çalışma ofisinde" -> "Kaya'nın Çalışma Ofisi"
-  // e.g. "Tarihi antikacı dükkanında" -> "Tarihi Antikacı Dükkanı"
-  const dynamicPattern = /(?:([A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:'n[ıi]n|'nin|'nun|'nün)?)\s+)?([A-ZÇĞİÖŞÜa-zçğıöşü]{3,15})\s+(odas[ıi]nda|salonunda|ofisinde|evinde|k[üu]t[üu]phanesinde|bah[çc]esinde|restoran[ıi]nda|d[üu]kkan[ıi]nda)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = dynamicPattern.exec(text)) !== null) {
-    const owner = match[1] ? match[1].trim() + " " : "";
-    const rawDescriptor = match[2].trim().replace(/^(bir|yeni|büyük|eski|olan|bu|şu|o|ve|ile|için)\s+/i, "").trim();
-    if (rawDescriptor.length < 3 || /^(bir|yeni|büyük|eski|olan|bu|şu|o|ve|ile|için)$/i.test(rawDescriptor)) continue;
-    const rawType = match[3].toLowerCase();
-    const typeSuffix = rawType.startsWith("oda") ? "Odası"
-      : rawType.startsWith("salon") ? "Salonu"
-      : rawType.startsWith("ofis") ? "Ofisi"
-      : rawType.startsWith("ev") ? "Evi"
-      : rawType.startsWith("kütüp") ? "Kütüphanesi"
-      : rawType.startsWith("bahçe") ? "Bahçesi"
-      : rawType.startsWith("dükkan") ? "Dükkanı"
-      : "Restoranı";
-    const venueName = `${owner}${rawDescriptor.charAt(0).toUpperCase() + rawDescriptor.slice(1)} ${typeSuffix}`;
-    const venueType: LocationType = rawType.startsWith("bahçe") ? "exterior" : "interior";
-    if (!isAlreadyPresent(venueName)) {
-      results.push({
-        name: venueName,
-        type: venueType,
-        description: `${venueName} için özel tasarlanmış atmosferik mekan.`,
-        visualManifest: `Detailed graphic novel setting: ${venueName}, authentic architectural materials, moody atmospheric depth, cinematic lighting accents.`,
-        reason: `Hikayedeki "${match[0]}" ifadesinden tespit edildi`
-      });
-    }
-  }
-
-  return results;
+  return detectLocationsClientRegex(text, existingLocations);
 }
 
 export async function detectLocationsFromStory(
@@ -3819,7 +3666,28 @@ export async function generateSinglePanelImage(
   const hasMultimodalSupport = imageProvider === "gemini" && inlineImageParts.length > 0;
   const effectiveRefGuide = hasMultimodalSupport ? referenceGuideText : "";
 
-  const rawAssembledPrompt = `${characterLeadText} ${sanitizedPanelPrompt}.${locationGuideText ? ` ${locationGuideText}.` : ""}${directorStagingText ? ` Staging: ${directorStagingText}.` : ""}${effectiveRefGuide ? ` ${effectiveRefGuide}` : ""} ${styleDirectives}`;
+  // Assemble prompt with SCENE SETTING FIRST:
+  // FLUX and diffusion models attend heavily to initial tokens. By leading with the environment,
+  // we guarantee that the room/location is fully rendered instead of leaving characters in an empty studio void!
+  const promptSegments: string[] = [];
+  if (locationGuideText) {
+    promptSegments.push(`Scene setting: ${locationGuideText}.`);
+  }
+  if (sanitizedPanelPrompt) {
+    promptSegments.push(`Scene action: ${sanitizedPanelPrompt}.`);
+  }
+  if (characterLeadText) {
+    promptSegments.push(characterLeadText);
+  }
+  if (directorStagingText) {
+    promptSegments.push(`Staging: ${directorStagingText}.`);
+  }
+  if (effectiveRefGuide) {
+    promptSegments.push(effectiveRefGuide);
+  }
+  promptSegments.push(styleDirectives);
+
+  const rawAssembledPrompt = promptSegments.join(" ");
 
   const textPrompt = sanitizeAndOptimizePrompt(rawAssembledPrompt, "pollinations");
 

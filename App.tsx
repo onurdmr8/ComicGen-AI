@@ -34,11 +34,16 @@ import {
   getPollinationsApiKey,
   getPollinationsModel
 } from "./services/geminiService";
-import { PlusCircle, Info, Ghost, X, Send, Menu, Sparkles, Loader2, Zap, Download, ChevronRight, Book, Monitor, RotateCcw, Check, AlertTriangle, Copy, Clock, CreditCard, Brain, GitBranch, FileText, Trash2, RefreshCw, BookOpen, BookmarkCheck, BookmarkPlus, Users, KeyRound, Flame } from "lucide-react";
+import { PlusCircle, Info, Ghost, X, Send, Menu, Sparkles, Loader2, Zap, Download, ChevronRight, Book, Monitor, RotateCcw, Check, AlertTriangle, Copy, Clock, CreditCard, Brain, GitBranch, FileText, Trash2, RefreshCw, BookOpen, BookmarkCheck, BookmarkPlus, Users, KeyRound, Flame, MapPin } from "lucide-react";
 import html2canvas from "html2canvas";
 import { generateId, cn, isNameMatch } from "./lib/utils";
 import { pickOutfitIcon } from "./lib/outfitPresets";
 import { applyCameraAngleToPrompt } from "./lib/cameraAnglePresets";
+import { 
+  detectLocationsClientRegex, 
+  getThematicDefaultLocation, 
+  POPULAR_LOCATION_CHIPS 
+} from "./lib/locationDetector";
 import { 
   loadProject, 
   saveProject, 
@@ -504,6 +509,32 @@ export default function App() {
   const confirmNextPageGeneration = () => {
      setShowNextPageModal(false);
      let enrichedDirection = userDirection;
+
+     // Detect and auto-apply location from userDirection if present
+     if (userDirection && userDirection.trim().length >= 3) {
+       const detectedLocs = detectLocationsClientRegex(userDirection, config.locations || []);
+       if (detectedLocs.length > 0) {
+         const topLoc = detectedLocs[0];
+         const alreadyExists = (config.locations || []).some(
+           l => l.name.toLowerCase() === topLoc.name.toLowerCase()
+         );
+         if (!alreadyExists) {
+           const newLoc: LocationItem = {
+             id: `loc_${generateId()}`,
+             name: topLoc.name,
+             type: topLoc.type,
+             description: topLoc.description,
+             visualManifest: topLoc.visualManifest,
+             tags: ["Sonraki Sayfa", "Hikaye Mekanı"],
+             createdAt: Date.now()
+           };
+           const updated = [newLoc, ...(config.locations || [])];
+           setConfig(prev => ({ ...prev, locations: updated }));
+           saveLocationToLibrary(newLoc);
+         }
+       }
+     }
+
      if (selectedPageCharacterIds.length > 0) {
        const selectedChars = config.cast.filter(c => selectedPageCharacterIds.includes(c.id)).map(c => c.name);
        const otherChars = config.cast.filter(c => !selectedPageCharacterIds.includes(c.id)).map(c => c.name);
@@ -2054,6 +2085,78 @@ export default function App() {
                                 onChange={(e) => setUserDirection(e.target.value)}
                                 autoFocus
                             />
+
+                            {/* CANLI MEKAN ALGILAMA & HIZLI SEÇİM */}
+                            {(() => {
+                                const detectedNextPageLocs = userDirection.trim().length >= 3 
+                                    ? detectLocationsClientRegex(userDirection, config.locations || [])
+                                    : [];
+                                const currentLocName = detectedNextPageLocs.length > 0 
+                                    ? detectedNextPageLocs[0].name 
+                                    : ((config.locations && config.locations[0]?.name) || getThematicDefaultLocation(config.topic, config.tone, config.intro).name);
+                                const isFromText = detectedNextPageLocs.length > 0;
+
+                                return (
+                                    <div className="p-3 bg-amber-50 border-2 border-black space-y-2 mt-2">
+                                        <div className="flex items-center justify-between text-xs font-display">
+                                            <span className="flex items-center gap-1.5 text-black font-bold">
+                                                <MapPin size={14} className="text-red-600 shrink-0" />
+                                                SAYFA MEKANI:
+                                            </span>
+                                            <span className={cn(
+                                                "text-[10px] font-mono px-2 py-0.5 border border-black font-bold",
+                                                isFromText ? "bg-emerald-100 text-emerald-800" : "bg-white text-slate-700"
+                                            )}>
+                                                {isFromText ? "✨ Metinden Algılandı" : "Aktif Hikaye Mekanı"}
+                                            </span>
+                                        </div>
+
+                                        <div className="text-xs font-comic font-bold text-slate-900 bg-white p-2 border border-black flex items-center justify-between">
+                                            <span>🏛️ {currentLocName}</span>
+                                            <span className="text-[10px] text-emerald-700 font-mono font-bold">✓ Çizime Dahil Edilecek</span>
+                                        </div>
+
+                                        <div className="space-y-1 pt-0.5">
+                                            <div className="text-[10px] font-mono text-slate-600">⚡ Mekanı Değiştir:</div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {POPULAR_LOCATION_CHIPS.map(chip => {
+                                                    const isSelected = currentLocName.toLowerCase().includes(chip.name.toLowerCase()) ||
+                                                                       chip.name.toLowerCase().includes(currentLocName.toLowerCase());
+                                                    return (
+                                                        <button
+                                                            key={chip.name}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const newLoc: LocationItem = {
+                                                                    id: `loc_${generateId()}`,
+                                                                    name: chip.name,
+                                                                    type: chip.type,
+                                                                    description: chip.description,
+                                                                    visualManifest: chip.visualManifest,
+                                                                    tags: ["Sonraki Sayfa", "Hikaye Mekanı"],
+                                                                    createdAt: Date.now()
+                                                                };
+                                                                const others = (config.locations || []).filter(l => l.name.toLowerCase() !== chip.name.toLowerCase());
+                                                                setConfig(prev => ({ ...prev, locations: [newLoc, ...others] }));
+                                                                saveLocationToLibrary(newLoc);
+                                                            }}
+                                                            className={cn(
+                                                                "px-2 py-0.5 text-[10px] font-mono border border-black transition-all flex items-center gap-1",
+                                                                isSelected 
+                                                                    ? "bg-yellow-400 font-bold text-black shadow-xs" 
+                                                                    : "bg-white hover:bg-yellow-200 text-slate-800"
+                                                            )}
+                                                        >
+                                                            <span>{chip.icon}</span>
+                                                            <span>{chip.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                             <div className="flex justify-end gap-4 pt-2">
                                 <button 
                                     onClick={confirmNextPageGeneration}
