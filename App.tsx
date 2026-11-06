@@ -44,6 +44,7 @@ import {
   saveProject, 
   clearProject, 
   saveCharacterToLibrary,
+  saveLocationToLibrary,
   getAllSavedStories,
   getStoryById,
   saveStoryToLibrary,
@@ -593,6 +594,41 @@ export default function App() {
           effectiveConfig.cast = updatedCast;
           setConfig(prev => ({ ...prev, cast: updatedCast }));
           showStoryToast(`👗 Gardırop Güncellendi: ${outfitNotifications.join(" • ")}`);
+        }
+      }
+
+      // Handle detected locations from story text
+      if (scriptData.detectedLocations && scriptData.detectedLocations.length > 0) {
+        let updatedLocations = [...(effectiveConfig.locations || [])];
+        const locationNotifications: string[] = [];
+
+        scriptData.detectedLocations.forEach(detected => {
+          const alreadyExists = updatedLocations.some(
+            l => l.name.trim().toLowerCase() === detected.name.trim().toLowerCase() ||
+                 l.name.trim().toLowerCase().includes(detected.name.trim().toLowerCase()) ||
+                 detected.name.trim().toLowerCase().includes(l.name.trim().toLowerCase())
+          );
+
+          if (!alreadyExists) {
+            const newLoc: LocationItem = {
+              id: `loc_${generateId()}`,
+              name: detected.name,
+              type: detected.type || "interior",
+              description: detected.description,
+              visualManifest: detected.visualManifest,
+              tags: ["Otomatik Tespit", "Hikaye Mekanı"],
+              createdAt: Date.now()
+            };
+            updatedLocations.push(newLoc);
+            saveLocationToLibrary(newLoc);
+            locationNotifications.push(`"${detected.name}"`);
+          }
+        });
+
+        if (locationNotifications.length > 0) {
+          effectiveConfig.locations = updatedLocations;
+          setConfig(prev => ({ ...prev, locations: updatedLocations }));
+          showStoryToast(`🏛️ Yeni Mekan Algılandı ve Eklendi: ${locationNotifications.join(", ")}`);
         }
       }
 

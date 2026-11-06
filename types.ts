@@ -12,6 +12,7 @@ export interface ComicScriptResult {
   layoutType: string;
   panels: ComicPanelData[];
   detectedOutfitChanges?: DetectedOutfitChange[];
+  detectedLocations?: DetectedLocation[];
 }
 
 export interface CharacterOutfit {
@@ -66,6 +67,14 @@ export interface LocationItem {
   style?: string;
   createdAt?: number;
   tags?: string[];
+}
+
+export interface DetectedLocation {
+  name: string;
+  type: LocationType;
+  description: string;
+  visualManifest: string;
+  reason?: string;
 }
 
 export interface CharacterPoseSetting {

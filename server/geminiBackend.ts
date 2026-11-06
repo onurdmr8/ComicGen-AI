@@ -4,6 +4,7 @@ import {
   ComicPanelData, 
   ComicScriptResult,
   DetectedOutfitChange,
+  DetectedLocation,
   Character, 
   LocationItem, 
   PanelDirectorConfig, 
@@ -723,6 +724,63 @@ export function sanitizePromptForSafety(
   return cleaned;
 }
 
+export function sanitizeAndOptimizePrompt(rawPrompt: string, targetProvider: "pollinations" | "fal" | "together" | "gemini" = "pollinations"): string {
+  if (!rawPrompt || typeof rawPrompt !== "string") return "";
+
+  let cleaned = rawPrompt
+    // Remove internal system bracket markers
+    .replace(/\[MASTER COMIC PANEL DIRECTIVE\]:?/gi, "")
+    .replace(/\[PRIMARY SCENE ACTION & COMPOSITION\]:?/gi, "")
+    .replace(/\[MANDATORY CHARACTER POSITIONS, POSES & STAGING\]:?/gi, "Staging:")
+    .replace(/\[CHARACTERS IN PANEL[^\]]*\]:?/gi, "")
+    .replace(/\[ARTISTIC EXECUTION\]:?[\s\S]*$/gi, "")
+    .replace(/\[STRICT CHARACTER EXCLUSION[^\]]*\]:?[\s\S]*?(?=\n\n|\n\[|$)/gi, "")
+    .replace(/\[ATTACHED VISUAL REFERENCE[^\]]*\]:?[\s\S]*?(?=\n\n|\n\[|$)/gi, "")
+    // Remove legacy test artifacts
+    .replace(/\(short dark hair, brown eyes, blue jacket over grey tee\)/gi, "")
+    .replace(/\[.*?\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Deduplicate repeated style phrases that waste token limits
+  const duplicates = [
+    /Masterpiece graphic novel panel illustration/gi,
+    /Masterpiece semi-realistic Marvel comic book illustration(?: style)?/gi,
+    /published Marvel graphic novel (?:masterpiece|standard)/gi,
+    /published graphic novel masterpiece/gi,
+    /Award-winning graphic novel panel art/gi,
+    /Award-winning romantic graphic novel panel art/gi,
+    /Award-winning mature graphic novel panel art/gi,
+    /no text, no speech bubbles/gi
+  ];
+
+  for (const dup of duplicates) {
+    const matches = cleaned.match(dup);
+    if (matches && matches.length > 1) {
+      let count = 0;
+      cleaned = cleaned.replace(dup, (match) => {
+        count++;
+        return count === 1 ? match : "";
+      });
+    }
+  }
+
+  // Clean redundant punctuation and spacing
+  cleaned = cleaned
+    .replace(/\s*([,;.:])\s*\1+/g, "$1 ")
+    .replace(/\s+([,.:;])/g, "$1")
+    .replace(/([.?!])\s*([.?!])+/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Ensure negative prompt for text & speech bubbles
+  if (!/no text/i.test(cleaned)) {
+    cleaned += ", no text, no speech bubbles";
+  }
+
+  return cleaned.slice(0, 1150);
+}
+
 async function rewritePromptForSafety(unsafePrompt: string, isFullPage: boolean = false, contentRating: "pg13" | "pg17" | "pg18" = "pg17"): Promise<string> {
   const ai = getAIOrNull();
   if (!ai) {
@@ -833,19 +891,8 @@ export async function generateImageViaPollinations(
   else if (aspectRatio === "16:9") { width = 1024; height = 576; }
   else if (aspectRatio === "9:16") { width = 576; height = 1024; }
 
-  // 2. Clean up prompt: Remove internal system tags, unwrap brackets, keep pure scene description
-  const cleanScenePrompt = prompt
-    .replace(/\[MASTER COMIC PANEL DIRECTIVE\]:?/gi, "")
-    .replace(/\[PRIMARY SCENE ACTION & COMPOSITION\]:?/gi, "")
-    .replace(/\[MANDATORY CHARACTER POSITIONS, POSES & STAGING\]:?/gi, "Positions:")
-    .replace(/\[CHARACTERS IN PANEL[^\]]*\]:?/gi, "Characters:")
-    .replace(/\[ARTISTIC EXECUTION\]:?[\s\S]*$/gi, "")
-    .replace(/\[STRICT CHARACTER EXCLUSION[^\]]*\]:?[\s\S]*?(?=\n\n|\n\[|$)/gi, "")
-    .replace(/\[ATTACHED VISUAL REFERENCE[^\]]*\]:?[\s\S]*?(?=\n\n|\n\[|$)/gi, "")
-    .replace(/[\[\]]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 1100);
+  // 2. Clean up & optimize prompt: front-load subject, action & location without redundant style duplication
+  const cleanScenePrompt = sanitizeAndOptimizePrompt(prompt, "pollinations");
 
   // Normalize model ID for 100% Free URL generation on image.pollinations.ai
   let selectedModel = (preferredModel?.trim() || "flux").toLowerCase();
@@ -863,21 +910,19 @@ export async function generateImageViaPollinations(
     selectedModel = "flux";
   }
 
-  // Customize prompt style based on selected mode
-  let modeStyleTag = "Masterpiece semi-realistic Marvel comic book illustration, realistic character anatomy, lifelike facial bone structure and expressive eyes, refined black ink contours with dynamic cross-hatching, rich volumetric cinematic lighting, tactile skin and fabric textures (leather, denim, weaves), atmospheric depth, published Marvel graphic novel standard, no text, no speech bubbles.";
-  if (selectedModel === "flux-anime") {
-    modeStyleTag = "Japanese manga comic book art style, authentic anime aesthetic, crisp bold black manga ink outlines, expressive anime eyes, vibrant anime cel-shading, dynamic comic book framing, no text, no speech bubbles.";
-  } else if (selectedModel === "flux-realism") {
-    modeStyleTag = "Hyper-detailed realistic Marvel graphic novel illustration, painterly realism like Alex Ross and Gabriele Dell'Otto, realistic facial anatomy, volumetric cinematic lighting, rich lifelike textures, atmospheric depth, published Marvel graphic novel masterpiece, no text, no speech bubbles.";
-  } else if (selectedModel === "flux-3d") {
-    modeStyleTag = "3D volumetric graphic novel illustration, smooth subsurface scattering, expressive realistic 3D character CGI, ambient occlusion, no text, no speech bubbles.";
-  } else if (selectedModel === "any-dark") {
-    modeStyleTag = "Moody dark noir Marvel graphic novel illustration, deep chiaroscuro black shadows, intense ink hatching, high contrast noir aesthetic, realistic anatomy, gritty atmosphere, published Marvel comic art, no text, no speech bubbles.";
-  } else if (selectedModel === "turbo") {
-    modeStyleTag = "Semi-realistic Marvel comic art illustration, sharp bold ink outlines, energetic colors, realistic anatomy, clean comic shading, no text, no speech bubbles.";
+  // Customize prompt style based on selected mode ONLY if not already in prompt
+  let specializedModifier = "";
+  if (selectedModel === "flux-anime" && !/anime|manga|cel-shading/i.test(cleanScenePrompt)) {
+    specializedModifier = ". Japanese manga comic book art style, authentic anime aesthetic, crisp bold black ink outlines";
+  } else if (selectedModel === "flux-realism" && !/painterly|volumetric/i.test(cleanScenePrompt)) {
+    specializedModifier = ". Hyper-detailed realistic graphic novel illustration, volumetric cinematic lighting";
+  } else if (selectedModel === "flux-3d" && !/3D|CGI/i.test(cleanScenePrompt)) {
+    specializedModifier = ". 3D volumetric graphic novel illustration, ambient occlusion";
+  } else if (selectedModel === "any-dark" && !/noir|chiaroscuro/i.test(cleanScenePrompt)) {
+    specializedModifier = ". Moody dark noir graphic novel illustration, deep chiaroscuro black shadows";
   }
 
-  const fullPollinationsPrompt = `${cleanScenePrompt}. ${modeStyleTag}`.slice(0, 950);
+  const fullPollinationsPrompt = `${cleanScenePrompt}${specializedModifier}`.slice(0, 1100);
   const seed = Math.floor(Math.random() * 10000000);
 
   // 1. PRIMARY METHOD: Direct URL generation via https://image.pollinations.ai/prompt/[İngilizce-Görsel-Tanımı]
@@ -1024,22 +1069,8 @@ export async function generateImageViaTogetherFlux(
   else if (aspectRatio === "16:9") { width = 1024; height = 576; }
   else if (aspectRatio === "9:16") { width = 576; height = 1024; }
 
-  // 2. Clean prompt
-  const cleanScenePrompt = prompt
-    .replace(/\[MASTER COMIC PANEL DIRECTIVE\]:?/gi, "")
-    .replace(/\[PRIMARY SCENE ACTION & COMPOSITION\]:?/gi, "")
-    .replace(/\[MANDATORY CHARACTER POSITIONS, POSES & STAGING\]:?/gi, "Positions:")
-    .replace(/\[CHARACTERS IN PANEL[^\]]*\]:?/gi, "Characters:")
-    .replace(/\[ARTISTIC EXECUTION\]:?[\s\S]*$/gi, "")
-    .replace(/\[STRICT CHARACTER EXCLUSION[^\]]*\]:?[\s\S]*?(?=\n\n|\n\[|$)/gi, "")
-    .replace(/\[ATTACHED VISUAL REFERENCE[^\]]*\]:?[\s\S]*?(?=\n\n|\n\[|$)/gi, "")
-    .replace(/\[.*?\]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 900);
-
-  const styleTag = "Masterpiece semi-realistic Marvel comic book illustration style, realistic human anatomy, lifelike facial features and expressive eyes, refined black ink contours with dynamic cross-hatching, rich volumetric cinematic shading, tactile fabric textures, dramatic rim lighting, published Marvel graphic novel masterpiece, no text, no speech bubbles.";
-  const fullPrompt = `${cleanScenePrompt}. ${styleTag}`.slice(0, 1200);
+  // 2. Clean and optimize prompt
+  const fullPrompt = sanitizeAndOptimizePrompt(prompt, "together").slice(0, 1150);
 
   // Model selection: FLUX.1-dev for Ultra/Paid_Pro, FLUX.1-schnell for High/Standard
   const model = (renderQuality === "Ultra" || renderQuality === "Paid_Pro")
@@ -1130,22 +1161,8 @@ export async function generateImageViaFalFlux(
   else if (aspectRatio === "16:9") { width = 1024; height = 576; }
   else if (aspectRatio === "9:16") { width = 576; height = 1024; }
 
-  // 2. Clean prompt
-  const cleanScenePrompt = prompt
-    .replace(/\[MASTER COMIC PANEL DIRECTIVE\]:?/gi, "")
-    .replace(/\[PRIMARY SCENE ACTION & COMPOSITION\]:?/gi, "")
-    .replace(/\[MANDATORY CHARACTER POSITIONS, POSES & STAGING\]:?/gi, "Positions:")
-    .replace(/\[CHARACTERS IN PANEL[^\]]*\]:?/gi, "Characters:")
-    .replace(/\[ARTISTIC EXECUTION\]:?[\s\S]*$/gi, "")
-    .replace(/\[STRICT CHARACTER EXCLUSION[^\]]*\]:?[\s\S]*?(?=\n\n|\n\[|$)/gi, "")
-    .replace(/\[ATTACHED VISUAL REFERENCE[^\]]*\]:?[\s\S]*?(?=\n\n|\n\[|$)/gi, "")
-    .replace(/\[.*?\]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 900);
-
-  const styleTag = "Masterpiece semi-realistic Marvel comic book illustration style, realistic human anatomy, lifelike facial features and expressive eyes, refined black ink contours with dynamic cross-hatching, rich volumetric cinematic shading, tactile fabric textures, dramatic rim lighting, published Marvel graphic novel masterpiece, no text, no speech bubbles.";
-  const fullPrompt = `${cleanScenePrompt}. ${styleTag}`.slice(0, 1200);
+  // 2. Clean and optimize prompt
+  const fullPrompt = sanitizeAndOptimizePrompt(prompt, "together").slice(0, 1150);
 
   // Model selection: fal-ai/flux/dev for Ultra, fal-ai/flux/schnell for High/Standard
   const model = (renderQuality === "Ultra" || renderQuality === "Paid_Pro")
@@ -1717,19 +1734,7 @@ export async function generateCharacterAvatar(
   imageProvider: "auto" | "pollinations_flux" | "together_flux" | "fal_flux" | "gemini" = "auto",
   pollinationsModel?: string
 ): Promise<string> {
-  const styleEnhancement = getStyleEnhancement(style);
-  const prompt = `Masterclass 3-Part Semi-Realistic Marvel Comic Character Reference Model Sheet for "${name}".
-[LAYOUT]: A horizontal character turnaround model sheet displaying the EXACT SAME character in THREE clear, evenly spaced views against a solid neutral studio backdrop:
-1. FRONT VIEW (Ön Boydan): Full-length standing pose showcasing complete costume silhouette, exact colors, fabrics, posture, and footwear.
-2. BACK VIEW (Arka Boydan): Full-length rear view showcasing rear hairstyle, back of jacket/armor/cape, belt, and rear footwear.
-3. CLOSE-UP PORTRAIT (Portre): Detailed bust/headshot capturing realistic facial bone structure, lifelike eye clarity and depth, natural skin tone and texture, and natural facial expression.
-
-[STRICT CHARACTER CONTINUITY & MARVEL REALISM MANDATES]:
-- All 3 views MUST depict the EXACT SAME individual with identical facial features, skin complexion, hair color/style, and exact outfit colors.
-- Art Style: Semi-realistic Marvel graphic novel illustration (inspired by Alex Ross, Gabriele Dell'Otto, and Adi Granov). Refined black ink lines with realistic human anatomy, volumetric shading, and tactile textures. ${styleEnhancement}
-- Character Visual Manifest: ${visualManifest}.
-- Quality: Crisp clean comic inking lines, nuanced cross-hatching, rich balanced shading, anatomically accurate realistic proportions, studio character turnaround sheet.
-- Exclude: Goofy cartoon caricature, blurry faces, distorted hands, extra limbs, messy lines, low resolution, cropped heads.`;
+  const prompt = `Character reference turnaround model sheet for "${name}", horizontal 3-view character model sheet on neutral studio backdrop: 1. Full-length front standing view displaying complete costume, silhouette, colors, and footwear; 2. Full-length back standing view showing rear hairstyle and back of jacket/armor/outfit; 3. Close-up portrait bust headshot capturing realistic facial bone structure, expressive eyes, hair texture, and complexion. Character appearance: ${visualManifest}. Art style: Semi-realistic Marvel graphic novel illustration in ${style || "Modern Comic"} style, crisp black ink linework, volumetric cinematic lighting, anatomically accurate proportions, studio character sheet, no text, no speech bubbles.`;
   
   try {
     return await generateImageWithFallback(prompt, "4:3", [], false, "pg13", "auto", "High", imageProvider, pollinationsModel);
@@ -1947,20 +1952,7 @@ export async function generateCharacterFromImage(
   }
 
   // Step 2: Generate the 3-Angle Comic Avatar (Front, Back, Portrait)
-  const styleEnhancement = getStyleEnhancement(style);
-  const avatarPrompt = `Masterclass 3-Part Semi-Realistic Comic Character Reference Model Sheet for "${finalName}".
-[STRICT REFERENCE LIKENESS MANDATE]:
-Transform the person from the attached reference photo into a stylized Marvel graphic novel character.
-Maintain 100% exact facial likeness, bone structure, eye shape, hairstyle, hair color, and recognizable identity from the photo!
-
-[LAYOUT]: Horizontal character turnaround sheet with THREE evenly spaced views on a clean solid neutral studio backdrop:
-1. FRONT VIEW (Ön Boydan Görünüm): Full-body standing pose showcasing complete costume: ${finalOutfit}.
-2. BACK VIEW (Arka Boydan Görünüm): Full-body rear view showcasing rear hairstyle and back of outfit/jacket/cape.
-3. CLOSE-UP PORTRAIT (Portre / Yakın Yüz): Detailed bust headshot capturing exact facial bone structure, expressive eyes, hair texture from photo in ${style} graphic novel linework.
-
-Visual Manifest: ${finalVisualManifest}.
-Art Style: ${style}. ${styleEnhancement}
-Quality: Masterpiece Marvel graphic novel draftsmanship, refined black ink contours, volumetric cinematic lighting, anatomically precise, no blur, no text, no speech bubbles.`;
+  const avatarPrompt = `Character reference turnaround model sheet for "${finalName}" adapted from reference photo, horizontal 3-view character sheet on clean neutral studio backdrop: 1. Full-length front standing view displaying complete costume: ${finalOutfit}; 2. Full-length back standing view showing rear hairstyle and back of outfit; 3. Close-up portrait bust headshot capturing exact facial bone structure, eye shape, hairstyle, and recognizable identity from photo. Subject appearance: ${finalVisualManifest}. Art style: Semi-realistic Marvel graphic novel illustration in ${style} style, refined black ink contours, volumetric cinematic shading, accurate human anatomy, studio lighting, no text, no speech bubbles.`;
 
   console.log(`[ImageToCharacter] 3'lü model sayfası üretiliyor (Provider: ${imageProvider || "auto"})...`);
   
@@ -2419,6 +2411,263 @@ export function detectOutfitChangesRegex(
   return results;
 }
 
+export function detectLocationsRegex(
+  text: string,
+  existingLocations: LocationItem[] = []
+): DetectedLocation[] {
+  if (!text || typeof text !== "string") return [];
+  const results: DetectedLocation[] = [];
+
+  const isAlreadyPresent = (name: string): boolean => {
+    const n = name.trim().toLowerCase();
+    const existingMatch = existingLocations.some(el => {
+      const en = el.name.trim().toLowerCase();
+      return en === n || en.includes(n) || n.includes(en);
+    });
+    const resultMatch = results.some(r => {
+      const rn = r.name.trim().toLowerCase();
+      return rn === n || rn.includes(n) || n.includes(rn);
+    });
+    return existingMatch || resultMatch;
+  };
+
+  interface LocationPattern {
+    regex: RegExp;
+    name: string;
+    type: LocationType;
+    description: string;
+    visualManifest: string;
+    reasonTr: string;
+  }
+
+  const patterns: LocationPattern[] = [
+    {
+      regex: /\b(otel\s+odası|otel\s+odas[ıi]nda|otel\s+s[üu]iti|otel\s+s[üu]itinde|l[üu]ks\s+otel|otelde|penthouse|hotel\s+room|luxury\s+hotel)\b/i,
+      name: "Lüks Otel Odası",
+      type: "interior",
+      description: "Geniş pencereli, şehir manzaralı lüks otel odası; king-size yatak, saten çarşaflar ve loş abajur aydınlatması.",
+      visualManifest: "Upscale modern luxury hotel bedroom with floor-to-ceiling panoramic windows overlooking night city lights, king-size bed with crisp duvet, designer ambient lamp lighting, plush carpet, rich walnut surfaces.",
+      reasonTr: "Hikaye metninde otel odası tespit edildi"
+    },
+    {
+      regex: /\b(vintage\s+kafe|kafe(?:de|sinde)?|kahve\s+d[üu]kkan[ıi]|bistro(?:da)?|coffee\s+shop|cozy\s+cafe)\b/i,
+      name: "Vintage Kafe",
+      type: "interior",
+      description: "Ahşap masaları, buharlı kahve makineleri ve sarı Edison ampulleriyle nostaljik, samimi bir kafe ortamı.",
+      visualManifest: "Cozy vintage artisan coffee shop, rustic reclaimed oak tables, brass espresso machine, warm Edison bulb glow, blackboard menu on exposed brick wall, rain-streaked window reflections.",
+      reasonTr: "Hikaye metninde kafe/kahve mekanı tespit edildi"
+    },
+    {
+      regex: /\b(ara\s+sokak(?:ta)?|karanl[ıi]k\s+sokak|ya[ğg]murlu\s+cadde|sokak(?:ta)?|cadde(?:de)?|kald[ıi]r[ıi]m|rainy\s+street|dark\s+alley(?:way)?|neon\s+alley)\b/i,
+      name: "Karanlık Yağmurlu Sokak",
+      type: "urban",
+      description: "Islak parke taşları, sarı sokak lambaları ve neon tabelaların su birikintilerine vuran yansımalarıyla atmosferik şehir sokağı.",
+      visualManifest: "Atmospheric cinematic city alleyway in the rain, wet cobblestone reflections, amber streetlamp glow, neon signs reflecting in puddles, steam rising from street grates, gritty noir aesthetic.",
+      reasonTr: "Hikaye metninde sokak/cadde sahnesi tespit edildi"
+    },
+    {
+      regex: /\b(terk\s+edilmi[şs]\s+depo|depo(?:da|sunda)?|sanayi\s+hangar[ıi]|fabrika(?:da)?|hangar(?:da)?|abandoned\s+warehouse|industrial\s+hangar)\b/i,
+      name: "Terk Edilmiş Sanayi Deposu",
+      type: "interior",
+      description: "Kırık pencerelerden süzülen ay ışığı, paslı metal kirişler ve tozlu beton zeminle tekinsiz bir sanayi deposu.",
+      visualManifest: "Vast abandoned industrial warehouse, broken skylights with shafts of cool moonlight, rusted iron trusses, dusty cracked concrete floor, discarded wooden crates, moody chiaroscuro shadows.",
+      reasonTr: "Hikaye metninde depo/hangar tespit edildi"
+    },
+    {
+      regex: /\b(g[öo]kdelen\s+[çc]at[ıi]s[ıi]|teras(?:ta)?|[çc]at[ıi](?:da|s[ıi]nda)?|balkon(?:da)?|rooftop(?:\s+terrace)?|skyscraper\s+roof)\b/i,
+      name: "Gökdelen Çatısı",
+      type: "exterior",
+      description: "Şehrin parlayan ışıklarına tepeden bakan, rüzgarlı ve yüksek güvenlik korkuluklu gökdelen çatısı.",
+      visualManifest: "High-altitude skyscraper rooftop overlooking glowing sprawling metropolis at dusk, metal exhaust vents, wet perimeter parapet railing, wind-blown mist, cinematic wide urban depth.",
+      reasonTr: "Hikaye metninde çatı/teras mekanı tespit edildi"
+    },
+    {
+      regex: /\b(bar(?:da|[ıi]nda)?|gece\s+kul[üu]b[üu]|pub(?:da)?|meyhane(?:de)?|lounge|nightclub|jazz\s+bar)\b/i,
+      name: "Loş Gece Kulübü & Bar",
+      type: "interior",
+      description: "Koyu renk tezgahlar, renkli neon ışıklar, şişe rafları ve loş gölgelerle dolu hareketli gece mekanı.",
+      visualManifest: "Atmospheric dim-lit nightclub lounge bar, polished mahogany counter, glowing shelves of amber bottles, magenta and cyan neon rim lighting, smoky haze, plush velvet booths.",
+      reasonTr: "Hikaye metninde bar/gece kulübü tespit edildi"
+    },
+    {
+      regex: /\b(hastane(?:de|sinde)?|hastane\s+odas[ıi]|hastane\s+koridoru|klinik(?:te)?|acil\s+servis|hospital\s+room|hospital\s+corridor)\b/i,
+      name: "Hastane Odası & Koridoru",
+      type: "interior",
+      description: "Steril beyaz duvarlar, floresan ışıklar ve medikal ekipmanlarla donatılmış hastane ortamı.",
+      visualManifest: "Sterile modern hospital room and corridor, cool fluorescent overhead panel lights, stainless steel IV stands, heart monitor screens with faint green glow, glossy linoleum floors.",
+      reasonTr: "Hikaye metninde hastane/klinik ortamı tespit edildi"
+    },
+    {
+      regex: /\b(yatak\s+odas[ıi](?:nda)?|oturma\s+odas[ıi]|malik[âa]ne|villa(?:da)?|luxury\s+bedroom|mansion\s+living\s+room)\b/i,
+      name: "Lüks Yatak Odası & Rezidans",
+      type: "interior",
+      description: "Yumuşak tül perdeler, geniş yatak, şık mobilyalar ve sıcak loş aydınlatmalı özel yaşam alanı.",
+      visualManifest: "Sophisticated modern penthouse apartment bedroom, king-size bed with tumbled silk satin sheets, warm bedside lamps, sheer curtains softly billowing, warm hardwood floors.",
+      reasonTr: "Hikaye metninde yatak odası/ev mekanı tespit edildi"
+    },
+    {
+      regex: /\b(araba\s+i[çc]i|ara[çc]\s+i[çc]i|otomobil(?:de)?|taksi(?:de)?|araba(?:da)?|limuzin(?:de)?|car\s+interior|moving\s+vehicle)\b/i,
+      name: "Araç İçi / Otomobil",
+      type: "vehicle",
+      description: "Deri koltuklar, parlayan dijital gösterge paneli ve camlardan akan şehir ışıklarıyla araç içi atmosferi.",
+      visualManifest: "Cinematic sports sedan interior at night, dark stitched leather seats, illuminated digital dashboard dials with cyan glow, rain streaks on windshield, passing streetlights casting moving orange flares.",
+      reasonTr: "Hikaye metninde araç/araba içi tespit edildi"
+    },
+    {
+      regex: /\b(orman(?:da)?|a[ğg]a[çc]l[ıi]k|sahil(?:de)?|kumsal(?:da)?|plaj(?:da)?|g[öo]l\s+kenar[ıi]|deniz\s+k[ıi]y[ıi]s[ıi]|forest|beach|shoreline|lake\s+edge)\b/i,
+      name: "Sisli Doğa & Sahil",
+      type: "nature",
+      description: "Yoğun ağaçlar, puslu zemin veya dalgaların vurduğu kum taneleriyle doğal açık hava mekanı.",
+      visualManifest: "Atmospheric natural landscape, tall misty pines with filtered morning sunbeams, wet mossy earth, distant tranquil shoreline with gentle dark water reflections.",
+      reasonTr: "Hikaye metninde doğa/sahil mekanı tespit edildi"
+    },
+    {
+      regex: /\b(laboratuvar(?:da)?|gizli\s+[üu]s|kontrol\s+odas[ıi]|ara[şs]t[ıi]rma\s+merkezi|science\s+lab|high-tech\s+laboratory|control\s+room)\b/i,
+      name: "Yüksek Teknolojili Araştırma Laboratuvarı",
+      type: "interior",
+      description: "Holografik ekranlar, cam tüpler, metal çalışma masaları ve parlayan göstergelerle ileri teknoloji araştırma merkezi.",
+      visualManifest: "High-tech research laboratory, holographic computer displays casting blue ambient light, sterile steel countertops, containment glass tubes, minimalist sci-fi architectural aesthetic.",
+      reasonTr: "Hikaye metninde laboratuvar/üs tespit edildi"
+    }
+  ];
+
+  for (const p of patterns) {
+    if (p.regex.test(text) && !isAlreadyPresent(p.name)) {
+      results.push({
+        name: p.name,
+        type: p.type,
+        description: p.description,
+        visualManifest: p.visualManifest,
+        reason: p.reasonTr
+      });
+    }
+  }
+
+  // Dynamic regex for custom venues: "[Kişi/Nitelik] [Mekan] (odasında|salonunda|ofisinde|evinde|kütüphanesinde|bahçesinde|restoranında|dükkanında)"
+  // e.g. "Kaya'nın çalışma ofisinde" -> "Kaya'nın Çalışma Ofisi"
+  // e.g. "Tarihi antikacı dükkanında" -> "Tarihi Antikacı Dükkanı"
+  const dynamicPattern = /(?:([A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:'n[ıi]n|'nin|'nun|'nün)?)\s+)?([A-ZÇĞİÖŞÜa-zçğıöşü]{3,15})\s+(odas[ıi]nda|salonunda|ofisinde|evinde|k[üu]t[üu]phanesinde|bah[çc]esinde|restoran[ıi]nda|d[üu]kkan[ıi]nda)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = dynamicPattern.exec(text)) !== null) {
+    const owner = match[1] ? match[1].trim() + " " : "";
+    const rawDescriptor = match[2].trim().replace(/^(bir|yeni|büyük|eski|olan|bu|şu|o|ve|ile|için)\s+/i, "").trim();
+    if (rawDescriptor.length < 3 || /^(bir|yeni|büyük|eski|olan|bu|şu|o|ve|ile|için)$/i.test(rawDescriptor)) continue;
+    const rawType = match[3].toLowerCase();
+    const typeSuffix = rawType.startsWith("oda") ? "Odası"
+      : rawType.startsWith("salon") ? "Salonu"
+      : rawType.startsWith("ofis") ? "Ofisi"
+      : rawType.startsWith("ev") ? "Evi"
+      : rawType.startsWith("kütüp") ? "Kütüphanesi"
+      : rawType.startsWith("bahçe") ? "Bahçesi"
+      : rawType.startsWith("dükkan") ? "Dükkanı"
+      : "Restoranı";
+    const venueName = `${owner}${rawDescriptor.charAt(0).toUpperCase() + rawDescriptor.slice(1)} ${typeSuffix}`;
+    const venueType: LocationType = rawType.startsWith("bahçe") ? "exterior" : "interior";
+    if (!isAlreadyPresent(venueName)) {
+      results.push({
+        name: venueName,
+        type: venueType,
+        description: `${venueName} için özel tasarlanmış atmosferik mekan.`,
+        visualManifest: `Detailed graphic novel setting: ${venueName}, authentic architectural materials, moody atmospheric depth, cinematic lighting accents.`,
+        reason: `Hikayedeki "${match[0]}" ifadesinden tespit edildi`
+      });
+    }
+  }
+
+  return results;
+}
+
+export async function detectLocationsFromStory(
+  text: string,
+  existingLocations: LocationItem[] = []
+): Promise<DetectedLocation[]> {
+  const regexResults = detectLocationsRegex(text, existingLocations);
+  const ai = getAIOrNull();
+  if (!ai || !text || text.trim().length < 8) {
+    return regexResults;
+  }
+
+  try {
+    const prompt = `You are a Lead Graphic Novel Environment Director.
+Analyze the following story text and identify all physical LOCATIONS, SETTINGS, ROOMS, VENUES, or VEHICLES where scenes occur:
+"""
+${text}
+"""
+
+Already known locations in project:
+${existingLocations.map(l => `- ${l.name} (${l.type})`).join("\n") || "None"}
+
+Extract any distinct physical locations mentioned in the story text. For each:
+1. 'name': Clear Turkish name (e.g. "Lüks Otel Odası", "Vintage Kafe", "Karanlık Ara Sokak", "Gökdelen Çatısı")
+2. 'type': One of "interior", "exterior", "urban", "nature", "vehicle", "prop"
+3. 'description': 1-2 descriptive sentences in Turkish
+4. 'visualManifest': Detailed 1-2 sentence English prompt snippet describing architectural materials, lighting, atmosphere, and key props for comic image generation
+5. 'reason': Turkish explanation of why/where this was detected in the text
+
+Return valid JSON adhering to the schema.`;
+
+    const responseSchema: Schema = {
+      type: Type.OBJECT,
+      properties: {
+        detectedLocations: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              type: { type: Type.STRING },
+              description: { type: Type.STRING },
+              visualManifest: { type: Type.STRING },
+              reason: { type: Type.STRING }
+            },
+            required: ["name", "type", "description", "visualManifest"]
+          }
+        }
+      },
+      required: ["detectedLocations"]
+    };
+
+    const response = await ai.models.generateContent({
+      model: STORY_MODEL,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema
+      }
+    });
+
+    const parsed = parseJsonFromText(extractTextContent(response), { detectedLocations: [] });
+    const llmLocations: DetectedLocation[] = Array.isArray(parsed?.detectedLocations)
+      ? parsed.detectedLocations.map((l: any) => ({
+          name: l.name,
+          type: (["interior", "exterior", "urban", "nature", "vehicle", "prop"].includes(l.type) ? l.type : "interior") as LocationType,
+          description: l.description,
+          visualManifest: l.visualManifest,
+          reason: l.reason || "Yapay zeka hikaye analizinden tespit edildi"
+        }))
+      : [];
+
+    const merged = [...regexResults];
+    llmLocations.forEach(llmLoc => {
+      const alreadyIn = merged.some(m => 
+        m.name.trim().toLowerCase() === llmLoc.name.trim().toLowerCase() ||
+        m.name.trim().toLowerCase().includes(llmLoc.name.trim().toLowerCase())
+      ) || existingLocations.some(el =>
+        el.name.trim().toLowerCase() === llmLoc.name.trim().toLowerCase() ||
+        el.name.trim().toLowerCase().includes(llmLoc.name.trim().toLowerCase())
+      );
+      if (!alreadyIn) {
+        merged.push(llmLoc);
+      }
+    });
+
+    return merged;
+  } catch (err) {
+    console.warn("detectLocationsFromStory LLM error, falling back to regex:", err);
+    return regexResults;
+  }
+}
+
 export function generateProceduralComicScript(
   config: ComicConfig,
   history: string[] = [],
@@ -2623,10 +2872,13 @@ export function generateProceduralComicScript(
     panels[1].imagePrompt += ` Specifically featuring: ${userDirection.slice(0, 100)}.`;
   }
 
+  const detectedLocations = detectLocationsRegex(combinedText, config.locations || []);
+
   return {
     layoutType: "grid-2x2",
     panels,
-    detectedOutfitChanges: detectedOutfitChanges.length > 0 ? detectedOutfitChanges : undefined
+    detectedOutfitChanges: detectedOutfitChanges.length > 0 ? detectedOutfitChanges : undefined,
+    detectedLocations: detectedLocations.length > 0 ? detectedLocations : undefined
   };
 }
 
@@ -2640,9 +2892,24 @@ export async function generateComicScript(
     return generateProceduralComicScript(config, history, userDirection);
   }
 
-  // 0. Pre-detect outfit changes from combined story context upfront!
+  // 0. Pre-detect outfit changes & locations from combined story context upfront!
   const combinedText = `${config.topic || ""} ${config.intro || ""} ${userDirection || ""}`;
   const preDetectedOutfitChanges = detectOutfitChangesRegex(combinedText, config.cast || []);
+  const preDetectedLocations = detectLocationsRegex(combinedText, config.locations || []);
+
+  const allActiveLocations = [...(config.locations || [])];
+  preDetectedLocations.forEach(pl => {
+    if (!allActiveLocations.some(al => al.name.trim().toLowerCase() === pl.name.trim().toLowerCase())) {
+      allActiveLocations.push({
+        id: `loc_${generateId()}`,
+        name: pl.name,
+        type: pl.type,
+        description: pl.description,
+        visualManifest: pl.visualManifest,
+        tags: ["Otomatik Tespit"]
+      });
+    }
+  });
 
   const effectiveCast = config.cast.map(c => {
     const matchChange = preDetectedOutfitChanges.find(oc => isNameMatch(oc.characterName, c.name));
@@ -2683,9 +2950,9 @@ export async function generateComicScript(
     .join("\n\n");
 
   let locationDescription = "";
-  if (config.locations && config.locations.length > 0) {
+  if (allActiveLocations.length > 0) {
     locationDescription = "\n\nACTIVE LOCATIONS / ENVIRONMENTS / PROPS:\n" + 
-      config.locations.map(l => `- [${l.type.toUpperCase()}] ${l.name}: ${l.visualManifest || l.description}`).join("\n");
+      allActiveLocations.map(l => `- [${l.type.toUpperCase()}] ${l.name}: ${l.visualManifest || l.description}`).join("\n");
   }
 
   let narrativeMemoryPrompt = "";
@@ -2901,7 +3168,16 @@ export async function generateComicScript(
       * Give the reason in Turkish (e.g. "Hikayede belirtildi").
       * Return this in the top-level 'detectedOutfitChanges' array. If no costume changes are mentioned, provide an empty array [].
     
-    Return layoutType "grid-2x2", exactly 4 panels, and detectedOutfitChanges.
+    >>> AUTOMATIC LOCATION & SETTING DETECTION (MEKAN TESPİTİ) <<<
+    - If the user's story topic, intro, or scene direction mentions ANY physical location, room, venue, setting, or vehicle (e.g. "otel odası", "vintage kafe", "karanlık sokak", "depo", "gökdelen çatısı", "yatak odası", "araç içi"):
+      * Identify its name in Turkish (e.g. "Lüks Otel Odası", "Vintage Kafe", "Karanlık Sokak", "Gökdelen Çatısı").
+      * Determine its type ("interior", "exterior", "urban", "nature", "vehicle", "prop").
+      * Give it a Turkish description (1-2 sentences).
+      * Give it a vivid English visualManifest for background continuity (1-2 sentences).
+      * Give the reason in Turkish (e.g. "Hikayede belirtildi").
+      * Return this in the top-level 'detectedLocations' array. If no new locations are mentioned, provide an empty array [].
+    
+    Return layoutType "grid-2x2", exactly 4 panels, detectedOutfitChanges, and detectedLocations.
   `;
 
   const responseSchema: Schema = {
@@ -2936,6 +3212,20 @@ export async function generateComicScript(
             reason: { type: Type.STRING },
           },
           required: ["characterName", "outfitName", "outfitDescription"],
+        },
+      },
+      detectedLocations: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            type: { type: Type.STRING },
+            description: { type: Type.STRING },
+            visualManifest: { type: Type.STRING },
+            reason: { type: Type.STRING },
+          },
+          required: ["name", "type", "description", "visualManifest"],
         },
       },
     },
@@ -3000,7 +3290,7 @@ export async function generateComicScript(
     return generateProceduralComicScript(config, history, userDirection);
   }
 
-  const rawParsed = parseJsonFromText(text, { panels: [], detectedOutfitChanges: [] });
+  const rawParsed = parseJsonFromText(text, { panels: [], detectedOutfitChanges: [], detectedLocations: [] });
   let panels: any[] = Array.isArray(rawParsed) ? rawParsed : (rawParsed.panels || []);
   const llmChanges: DetectedOutfitChange[] = Array.isArray(rawParsed?.detectedOutfitChanges)
     ? rawParsed.detectedOutfitChanges
@@ -3010,6 +3300,23 @@ export async function generateComicScript(
   preDetectedOutfitChanges.forEach(rc => {
     if (!mergedOutfitChanges.some(mc => isNameMatch(mc.characterName, rc.characterName))) {
       mergedOutfitChanges.push(rc);
+    }
+  });
+
+  const llmLocations: DetectedLocation[] = Array.isArray(rawParsed?.detectedLocations)
+    ? rawParsed.detectedLocations.map((l: any) => ({
+        name: l.name,
+        type: (["interior", "exterior", "urban", "nature", "vehicle", "prop"].includes(l.type) ? l.type : "interior") as LocationType,
+        description: l.description,
+        visualManifest: l.visualManifest,
+        reason: l.reason || "Hikayeden tespit edildi"
+      }))
+    : [];
+
+  const mergedLocations: DetectedLocation[] = [...llmLocations];
+  preDetectedLocations.forEach(rl => {
+    if (!mergedLocations.some(ml => ml.name.trim().toLowerCase() === rl.name.trim().toLowerCase())) {
+      mergedLocations.push(rl);
     }
   });
 
@@ -3141,7 +3448,8 @@ export async function generateComicScript(
   return {
     layoutType: "grid-2x2",
     panels: processedPanels,
-    detectedOutfitChanges: mergedOutfitChanges.length > 0 ? mergedOutfitChanges : undefined
+    detectedOutfitChanges: mergedOutfitChanges.length > 0 ? mergedOutfitChanges : undefined,
+    detectedLocations: mergedLocations.length > 0 ? mergedLocations : undefined
   };
 }
 
@@ -3361,22 +3669,38 @@ export async function generateSinglePanelImage(
   if (directorConfig?.locationId) {
     matchedLocation = locations.find(l => l.id === directorConfig.locationId);
   } else {
-    matchedLocation = locations.find(l => panelPrompt.toLowerCase().includes(l.name.toLowerCase()));
+    matchedLocation = locations.find(l => {
+      const lNameLower = l.name.toLowerCase();
+      const promptLower = panelPrompt.toLowerCase();
+      if (promptLower.includes(lNameLower)) return true;
+      const words = lNameLower.split(/\s+/).filter(w => w.length >= 4 && !/^(ve|bir|için|olan)$/i.test(w));
+      return words.some(w => promptLower.includes(w));
+    });
+  }
+
+  // Fallback: if only 1 location is active in project, use it as default setting
+  if (!matchedLocation && locations.length === 1) {
+    matchedLocation = locations[0];
   }
 
   if (matchedLocation) {
-    locationGuideText = `Setting: ${matchedLocation.name} - ${matchedLocation.visualManifest || matchedLocation.description}`;
+    locationGuideText = `Setting: ${matchedLocation.name} (${matchedLocation.type}), ${matchedLocation.visualManifest || matchedLocation.description}`;
   }
 
-  const isMaturePanel = isIntimatePanel || (contentRating !== "pg13" && isRomance);
+  const isMaturePanel = isIntimatePanel || (contentRating === "pg18" ? true : (contentRating !== "pg13" && isRomance));
 
-  const textPrompt = `${characterLeadText} ${sanitizedPanelPrompt}.${directorStagingText ? ` Staging: ${directorStagingText}.` : ""}${locationGuideText ? ` Setting: ${locationGuideText}.` : ""}${referenceGuideText ? ` ${referenceGuideText}` : ""} Masterpiece graphic novel panel illustration in ${style || "Modern Comic"} art style. ${styleEnhancement} ${
-    isMaturePanel
-      ? "Award-winning mature graphic novel panel art, intense passionate atmosphere, seductive cinematic lighting, deep chiaroscuro rim highlights on skin, expressive emotional acting with genuine physical chemistry and desire, published adult graphic novel masterpiece standard, no text, no speech bubbles."
-      : isRomance 
-      ? "Award-winning romantic graphic novel panel art, crisp clean ink outlines, soft rich cel-shading, warm atmospheric lighting, expressive facial acting with emotional warmth, zero combat, zero fighting, pure romantic graphic novel illustration, no text, no speech bubbles."
-      : "Award-winning graphic novel panel art, crisp bold black ink outlines, volumetric cel-shading, vibrant cinematic colors, impeccable human anatomy with expressive faces, atmospheric lighting, sharp focus, no text, no speech bubbles."
-  }`;
+  let styleDirectives = "";
+  if (isMaturePanel) {
+    styleDirectives = `Masterpiece adult graphic novel panel art in ${style || "Modern Comic"} style, intense passionate atmosphere, seductive cinematic lighting, deep chiaroscuro rim highlights on skin, expressive emotional acting with genuine physical chemistry and desire, published adult graphic novel masterpiece standard, no text, no speech bubbles.`;
+  } else if (isRomance) {
+    styleDirectives = `Masterpiece romantic graphic novel panel art in ${style || "Modern Comic"} style, crisp clean ink outlines, soft rich cel-shading, warm atmospheric lighting, expressive facial acting with emotional warmth, zero combat, zero fighting, pure romantic graphic novel illustration, no text, no speech bubbles.`;
+  } else {
+    styleDirectives = `Masterpiece graphic novel panel art in ${style || "Modern Comic"} style, crisp bold black ink outlines, volumetric cel-shading, vibrant cinematic colors, impeccable human anatomy with expressive faces, atmospheric lighting, sharp focus, no text, no speech bubbles.`;
+  }
+
+  const rawAssembledPrompt = `${characterLeadText} ${sanitizedPanelPrompt}.${locationGuideText ? ` ${locationGuideText}.` : ""}${directorStagingText ? ` Staging: ${directorStagingText}.` : ""}${referenceGuideText ? ` ${referenceGuideText}` : ""} ${styleDirectives}`;
+
+  const textPrompt = sanitizeAndOptimizePrompt(rawAssembledPrompt, "pollinations");
 
   return await generateImageWithFallback(textPrompt, "1:1", inlineImageParts, false, contentRating, modestyTechnique, renderQuality, imageProvider, pollinationsModel);
 }

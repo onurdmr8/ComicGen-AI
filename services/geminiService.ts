@@ -3,6 +3,7 @@ import {
   ComicPanelData,
   ComicScriptResult,
   DetectedOutfitChange,
+  DetectedLocation,
   Character,
   LocationItem,
   PanelDirectorConfig,
@@ -685,6 +686,13 @@ export const generateLocationConceptArt = async (
     }
   }
   return raw;
+};
+
+export const detectLocationsFromStory = async (
+  text: string,
+  existingLocations: LocationItem[] = []
+): Promise<DetectedLocation[]> => {
+  return callBackendApi<DetectedLocation[]>("detectLocationsFromStory", { text, existingLocations });
 };
 
 export const generateRandomComicConfig = async (): Promise<Partial<ComicConfig>> => {

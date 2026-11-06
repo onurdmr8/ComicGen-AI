@@ -174,6 +174,9 @@ async function startServer() {
         case "generateLocationVisualManifest":
           result = await geminiBackend.generateLocationVisualManifest(body.name, body.description, body.type, body.style);
           break;
+        case "detectLocationsFromStory":
+          result = await geminiBackend.detectLocationsFromStory(body.text, body.existingLocations || []);
+          break;
         case "generateLocationConceptArt":
           result = await geminiBackend.generateLocationConceptArt(
             body.name,

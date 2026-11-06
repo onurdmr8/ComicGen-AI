@@ -8,14 +8,15 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Character, CharacterOutfit, ComicConfig, GeneratorStatus, LocationItem, NarrativeContinuityMemory, POLLINATIONS_MODELS, COMIC_ART_STYLES } from "../types";
-import { generateCharacterAvatar, generateCharacterFromImage, generateVisualManifest, generateCharacterStyleSheet, compileCharacterReferencePrompt, COLOR_PALETTES, LIGHTING_MOODS, setPollinationsModel } from "../services/geminiService";
+import { generateCharacterAvatar, generateCharacterFromImage, generateVisualManifest, generateCharacterStyleSheet, compileCharacterReferencePrompt, COLOR_PALETTES, LIGHTING_MOODS, setPollinationsModel, detectLocationsFromStory } from "../services/geminiService";
 import { generateId, cn } from "../lib/utils";
 import { DEFAULT_OUTFIT_PRESETS, getCharacterActiveOutfit } from "../lib/outfitPresets";
 import { 
   saveCharacterToLibrary, 
   getLibraryCharacters, 
   deleteCharacterFromLibrary, 
-  seedSampleCharacters 
+  seedSampleCharacters,
+  saveLocationToLibrary
 } from "../lib/storage";
 import { CharacterLibraryModal } from "./CharacterLibraryModal";
 import { LocationLibraryModal } from "./LocationLibraryModal";
@@ -197,6 +198,62 @@ export const Sidebar: React.FC<SidebarProps> = ({
         locations: [...(prev.locations || []), loc]
       }));
       showToast(`"${loc.name}" hikaye mekanlarına eklendi!`);
+    }
+  };
+
+  const [isScanningLocations, setIsScanningLocations] = useState(false);
+
+  const handleScanLocationsFromStory = async () => {
+    const combinedStory = `${config.topic || ""} ${config.intro || ""}`.trim();
+    if (!combinedStory || combinedStory.length < 5) {
+      showToast("Lütfen önce bir hikaye konusu veya giriş sahnesi yazın.");
+      return;
+    }
+
+    setIsScanningLocations(true);
+    try {
+      const detected = await detectLocationsFromStory(combinedStory, config.locations || []);
+      if (!detected || detected.length === 0) {
+        showToast("Hikayede yeni bir mekan tespit edilemedi.");
+        return;
+      }
+
+      let updatedLocations = [...(config.locations || [])];
+      const newlyAdded: string[] = [];
+
+      for (const d of detected) {
+        const exists = updatedLocations.some(
+          l => l.name.trim().toLowerCase() === d.name.trim().toLowerCase() ||
+               l.name.trim().toLowerCase().includes(d.name.trim().toLowerCase()) ||
+               d.name.trim().toLowerCase().includes(l.name.trim().toLowerCase())
+        );
+        if (!exists) {
+          const newLoc: LocationItem = {
+            id: `loc_${generateId()}`,
+            name: d.name,
+            type: d.type || "interior",
+            description: d.description,
+            visualManifest: d.visualManifest,
+            tags: ["Otomatik Tespit", "Hikaye Mekanı"],
+            createdAt: Date.now()
+          };
+          updatedLocations.push(newLoc);
+          await saveLocationToLibrary(newLoc);
+          newlyAdded.push(d.name);
+        }
+      }
+
+      if (newlyAdded.length > 0) {
+        setConfig(prev => ({ ...prev, locations: updatedLocations }));
+        showToast(`🏛️ ${newlyAdded.length} yeni mekan tespit edildi ve eklendi: ${newlyAdded.join(", ")}`);
+      } else {
+        showToast("Tespit edilen mekanlar zaten hikayenizde mevcut.");
+      }
+    } catch (err: any) {
+      console.warn("Mekan tarama hatası:", err);
+      showToast("Mekan taranırken bir hata oluştu.");
+    } finally {
+      setIsScanningLocations(false);
     }
   };
 
@@ -2008,13 +2065,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 <p className="text-xs text-slate-300 font-comic">
                                     Hikayedeki sahnelerin, arka planların ve özel nesnelerin paneller arası görsel tutarlılığını sağlar.
                                 </p>
-                                <button
-                                    onClick={() => setIsLocationLibraryOpen(true)}
-                                    className="w-full bg-amber-500 hover:bg-amber-400 text-black font-display uppercase tracking-wider py-2.5 border-2 border-black shadow-comic transition-all text-xs flex items-center justify-center gap-2"
-                                >
-                                    <Compass size={15} />
-                                    Mekan & Eşya Kütüphanesini Aç
-                                </button>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={() => setIsLocationLibraryOpen(true)}
+                                        className="bg-amber-500 hover:bg-amber-400 text-black font-display uppercase tracking-wider py-2.5 px-2 border-2 border-black shadow-comic transition-all text-xs flex items-center justify-center gap-1.5"
+                                    >
+                                        <Compass size={14} />
+                                        Kütüphane
+                                    </button>
+                                    <button
+                                        onClick={handleScanLocationsFromStory}
+                                        disabled={isScanningLocations}
+                                        className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-display uppercase tracking-wider py-2.5 px-2 border-2 border-black shadow-comic transition-all text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                        title="Hikaye konusu ve girişini tarayarak yeni mekanları tespit eder ve projeye ekler"
+                                    >
+                                        {isScanningLocations ? (
+                                            <Loader2 size={14} className="animate-spin text-white" />
+                                        ) : (
+                                            <Sparkles size={14} className="text-cyan-200" />
+                                        )}
+                                        {isScanningLocations ? "Taranıyor..." : "Mekan Tara"}
+                                    </button>
+                                </div>
+                                <div className="bg-slate-900/90 border border-slate-700/80 p-2.5 rounded text-[11px] text-slate-300 flex items-start gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse mt-0.5 flex-shrink-0" />
+                                    <span className="leading-tight">
+                                        <strong className="text-emerald-400">Otomatik Algılama Aktif:</strong> Hikaye yazıldığında veya üretildiğinde mekanlar otomatik algılanıp buraya eklenir ve panellere yansıtılır.
+                                    </span>
+                                </div>
                             </div>
 
                             {/* Active Locations List */}
