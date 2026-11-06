@@ -3253,6 +3253,14 @@ export async function generateComicScript(
     - In each panel's 'imagePrompt', describe realistic human anatomy, lifelike facial bone structure, expressive eyes, authentic material textures (leather, denim, matte fabric, tactical armor), and cinematic lighting (dramatic rim lighting, volumetric shadows) rather than flat cartoon caricatures.
 
     CRITICAL IMAGE PROMPT PRODUCTION RULES (FOR FLAWLESS VISUAL GENERATION ON FIRST DRAW):
+    0. PROGRESSIVE VISUAL STORYTELLING (GÖRSELLERDE HİKAYEYİ KARE KARE GELİŞTİRME ZORUNLULUĞU):
+       - A comic page MUST show a clear visual evolution of the story across the 4 panels — NEVER 4 panels of characters in the same static pose!
+       - The 4 panels MUST depict distinct, progressive physical actions, hand gestures, and body language:
+         * Panel 1 (Establishing Action & Mood): Initial arrival, taking a seat, looking around the room pensively with a glass/prop in hand, or entering through a door.
+         * Panel 2 (Engagement & Movement): Active interaction begins — pulling up a chair/stool, stepping forward, gesturing with a welcoming smile, or leaning in.
+         * Panel 3 (Peak Action / Emotional Climax): The most dynamic and intense moment of the scene — happily clinking glasses in a celebratory toast with genuine shared laughter, gripping a hand, touching shoulders, intense eye-to-eye chemistry, or dramatic confrontation.
+         * Panel 4 (Resolution / Emotional Payoff): The narrative aftermath — whispering closely, resting chin on hand with a soft smile, exchanging a lingering look as the background blurs, or stepping out into the night together.
+       - Every panel's 'imagePrompt' MUST vividly describe what their HANDS are doing, their HEAD TILT, their FACIAL EXPRESSION, and their PHYSICAL ACTION!
     1. EXPLICIT CAMERA FRAMING: Every 'imagePrompt' MUST begin with a clear cinematic camera shot (e.g. "Medium close-up shot", "Dramatic wide-angle establishing shot", "Dynamic low-angle two-shot", "Over-the-shoulder reaction shot").
     2. ONE CRISP FROZEN MOMENT: Describe exactly ONE clear, focused action or emotional interaction. Do NOT overload the prompt with multiple sequential actions.
     3. MANDATORY CHARACTER VISUAL & ATTIRE TOKENS: Whenever a character is in the panel, explicitly name them and their attire: e.g. "Featuring [Name] (wearing [their attire or intimate state])".
@@ -3743,33 +3751,29 @@ export async function generateSinglePanelImage(
   // 5. Extract ONLY the avatar model sheets for the matched characters (NEVER attach an excluded character's image!)
   const { inlineImageParts, referenceGuideText } = extractCharacterImageParts(matchedCharacters, 2);
 
-  // 6. Build prominent character visual descriptions & mandatory attire lock (FIRST PRIORITY FOR IMAGE GENERATION)
+  // 6. Build concise character visual descriptions & mandatory attire lock
   // Only use modesty sheets if explicitly described as undressed or in the shower/bath
   const isExplicitlyUndressed = /\b(undressed|bare\s+skin|soyunuk|çıplak|soyunmuş|nude|naked|without\s+clothes|in\s+the\s+shower)\b/i.test(panelPrompt);
 
+  const formatCharAnchor = (c: Character, isUndressed: boolean): string => {
+    const attire = getCharacterCanonicalAttire(c);
+    const keyTraits = (attire.physicalTraits || c.description || "")
+      .split(/[;.]/)[0]
+      .slice(0, 90)
+      .trim();
+    const attireText = isUndressed
+      ? "tastefully draped in luxurious silk satin bedsheets covering modesty zones"
+      : `wearing: ${attire.outfitDescription.slice(0, 110)}`;
+    return `${c.name} (${keyTraits ? `${keyTraits}, ` : ""}${attireText})`;
+  };
+
   let characterLeadText = "";
   if (matchedCharacters.length === 1) {
-    const mainChar = matchedCharacters[0];
-    const attire = getCharacterCanonicalAttire(mainChar);
-    const attireText = isExplicitlyUndressed
-      ? "tastefully draped in luxurious silk satin bedsheets covering modesty zones"
-      : `wearing their registered standard attire: ${attire.outfitDescription}`;
-    characterLeadText = `Featuring ${mainChar.name} (${attire.physicalTraits || mainChar.description}, ${attireText}).`;
+    characterLeadText = `Featuring ${formatCharAnchor(matchedCharacters[0], isExplicitlyUndressed)}.`;
   } else if (matchedCharacters.length > 1) {
-    characterLeadText = `Featuring ${matchedCharacters.map(c => {
-      const attire = getCharacterCanonicalAttire(c);
-      const attireText = isExplicitlyUndressed
-        ? "tastefully draped in luxurious silk satin bedsheets covering modesty zones"
-        : `wearing their registered standard attire: ${attire.outfitDescription}`;
-      return `${c.name} (${attire.physicalTraits || c.description}, ${attireText})`;
-    }).join(" and ")}. The characters are actively interacting in the scene.`;
+    characterLeadText = `Featuring ${matchedCharacters.map(c => formatCharAnchor(c, isExplicitlyUndressed)).join(" and ")}.`;
   } else if (cast.length > 0) {
-    const defaultChar = cast[0];
-    const attire = getCharacterCanonicalAttire(defaultChar);
-    const attireText = isExplicitlyUndressed
-      ? "tastefully draped in luxurious silk satin bedsheets covering modesty zones"
-      : `wearing their registered standard attire: ${attire.outfitDescription}`;
-    characterLeadText = `Featuring ${defaultChar.name} (${attire.physicalTraits || defaultChar.description}, ${attireText}).`;
+    characterLeadText = `Featuring ${formatCharAnchor(cast[0], isExplicitlyUndressed)}.`;
   }
   characterLeadText = cleanModelSheetArtifacts(characterLeadText);
 
@@ -3858,20 +3862,21 @@ export async function generateSinglePanelImage(
   const hasMultimodalSupport = imageProvider === "gemini" && inlineImageParts.length > 0;
   const effectiveRefGuide = hasMultimodalSupport ? referenceGuideText : "";
 
-  // Assemble prompt: Subject & Attire FIRST for maximum token weight, then scene action, setting, and style
+  // Assemble prompt: DYNAMIC SCENE ACTION & STORYTELLING FIRST!
+  // In diffusion models, the first 30-50 tokens dictate the composition, character poses, and narrative action!
   const promptSegments: string[] = [];
-  promptSegments.push(`Masterpiece graphic novel panel in ${style || "Modern Comic"} style.`);
-
-  if (characterLeadText) {
-    promptSegments.push(characterLeadText);
-  }
+  promptSegments.push(`Masterpiece graphic novel comic panel in ${style || "Modern Comic"} style.`);
 
   if (sanitizedPanelPrompt) {
-    promptSegments.push(`Scene action: ${sanitizedPanelPrompt}.`);
+    promptSegments.push(`DYNAMIC SCENE ACTION & STORYTELLING: ${sanitizedPanelPrompt}.`);
+  }
+
+  if (characterLeadText) {
+    promptSegments.push(`CHARACTERS & REGISTERED ATTIRE: ${characterLeadText}`);
   }
 
   if (locationGuideText) {
-    promptSegments.push(`Environment setting: Inside ${locationGuideText}. Fully illustrated background environment, authentic architectural details.`);
+    promptSegments.push(`ENVIRONMENT SETTING: Inside ${locationGuideText}. Fully illustrated background environment, authentic architectural details.`);
   }
 
   if (directorStagingText) {
