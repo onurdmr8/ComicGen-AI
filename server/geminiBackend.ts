@@ -765,6 +765,9 @@ export function sanitizeAndOptimizePrompt(rawPrompt: string, targetProvider: "po
     }
   }
 
+  // Strip character turnaround & model sheet contamination from comic panels
+  cleaned = cleanModelSheetArtifacts(cleaned);
+
   // Clean redundant punctuation and spacing
   cleaned = cleaned
     .replace(/\s*([,;.:])\s*\1+/g, "$1 ")
@@ -773,9 +776,12 @@ export function sanitizeAndOptimizePrompt(rawPrompt: string, targetProvider: "po
     .replace(/\s+/g, " ")
     .trim();
 
-  // Ensure negative prompt for text & speech bubbles
+  // Ensure negative prompt for text, speech bubbles, and model sheets
   if (!/no text/i.test(cleaned)) {
     cleaned += ", no text, no speech bubbles";
+  }
+  if (!/no character turnaround/i.test(cleaned)) {
+    cleaned += ", full detailed scene background environment, no plain background, no empty void, no character turnaround sheet, no model sheet";
   }
 
   return cleaned.slice(0, 1150);
@@ -1601,6 +1607,30 @@ export function compileCharacterReferencePrompt(
   return `[CHARACTER STYLE SHEET - ${name.toUpperCase()}]: ${parts.join(" | ")}`;
 }
 
+export function cleanModelSheetArtifacts(text: string): string {
+  if (!text || typeof text !== "string") return "";
+  return text
+    .replace(/\[LAYOUT\]:[^\]]*/gi, "")
+    .replace(/\[STRICT CHARACTER CONTINUITY[^\]]*\]:[^\]]*/gi, "")
+    .replace(/\[STRICT REFERENCE LIKENESS[^\]]*\]:[^\]]*/gi, "")
+    .replace(/\b(?:character\s+reference\s+)?turnaround(?:\s+model)?(?:\s+sheet)?\b/gi, "")
+    .replace(/\b(?:horizontal\s+)?(?:3|three)-view(?:\s+character)?(?:\s+model)?(?:\s+sheet)?\b/gi, "")
+    .replace(/\b(?:1\.\s*)?full-length\s+front\s+(?:standing\s+)?view(?:\s+displaying[^;.,]*)?[;.,]?/gi, "")
+    .replace(/\b(?:2\.\s*)?full-length\s+back\s+(?:standing\s+)?view(?:\s+showing[^;.,]*)?[;.,]?/gi, "")
+    .replace(/\b(?:3\.\s*)?detailed\s+close-up\s+portrait\s+(?:bust\s+)?(?:headshot)?[^;.,]*[;.,]?/gi, "")
+    .replace(/\b(?:on\s+)?(?:clean\s+)?(?:solid\s+)?(?:neutral\s+)?(?:studio\s+)?(?:backdrop|background)\b/gi, "")
+    .replace(/\b(?:front|back|rear|side)\s+(?:full-body\s+)?view\b:?/gi, "")
+    .replace(/\b(?:close-up\s+)?portrait(?:\s+bust)?(?:\s+headshot)?\b:?/gi, "")
+    .replace(/\b(?:turnaround\s+sheet|model\s+sheet)\b/gi, "")
+    .replace(/\s*,\s*and\s*,/gi, ",")
+    .replace(/\s*,\s*and\s*\./gi, ".")
+    .replace(/,\s*,+/g, ",")
+    .replace(/\s*([,;.:])\s*\1+/g, "$1 ")
+    .replace(/\s+([,.:;])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function getCharacterCanonicalAttire(character: Character): {
   outfitName: string;
   outfitDescription: string;
@@ -1635,8 +1665,10 @@ export function getCharacterCanonicalAttire(character: Character): {
     }
   }
 
-  const physicalTraits = character.styleSheet?.physicalTraits?.trim() || character.description || "";
-  const fullReference = character.styleSheet?.referencePrompt || character.visualManifest || character.description;
+  // Clean out any turnaround / model sheet leakage so panel prompts remain pure scene actions
+  outfitDescription = cleanModelSheetArtifacts(outfitDescription);
+  const physicalTraits = cleanModelSheetArtifacts(character.styleSheet?.physicalTraits?.trim() || character.description || "");
+  const fullReference = cleanModelSheetArtifacts(character.styleSheet?.referencePrompt || character.visualManifest || character.description);
 
   return {
     outfitName,
@@ -1908,10 +1940,7 @@ export async function generateCharacterFromImage(
       2. 'physicalTraits': 1-2 sentences in Turkish accurately describing their face, facial bone structure, hair, eyes, and skin tone based on the photo.
       3. 'outfit': 1-2 sentences in Turkish describing their iconic costume and gear adapted to the comic theme.
       4. 'description': 1-2 sentences in Turkish giving their comic book background / personality.
-      5. 'visualManifest': Highly detailed English prompt segment detailing their full appearance across 3 views:
-         - Front full-body view: costume details, colors, footwear, build
-         - Back full-body view: rear hair, cape/jacket back details, equipment
-         - Close-up Portrait: exact facial features, eye color, jawline, hair texture from the photo, stylized in ${style}.
+      5. 'visualManifest': 1-2 detailed sentences in English describing their physical appearance, face, hair, and signature clothing (e.g. "Athletic muscular build, short styled dark hair, sharp jawline, wearing a white crewneck shirt and dark tactical denim pants"). IMPORTANT: DO NOT write multi-view, turnaround, front view, or back view instructions here! Write a clean descriptive character profile.
 
       Output strict JSON only:
       {
@@ -1942,7 +1971,7 @@ export async function generateCharacterFromImage(
           if (parsed.description) finalDescription = parsed.description;
           if (parsed.physicalTraits) finalPhysicalTraits = parsed.physicalTraits;
           if (parsed.outfit) finalOutfit = parsed.outfit;
-          if (parsed.visualManifest) finalVisualManifest = parsed.visualManifest;
+          if (parsed.visualManifest) finalVisualManifest = cleanModelSheetArtifacts(parsed.visualManifest);
           console.log(`[ImageToCharacter] Fotoğraf analizi tamamlandı: "${finalName}"`);
         }
       }
@@ -2721,6 +2750,31 @@ export function generateProceduralComicScript(
 
   let panels: ComicPanelData[] = [];
 
+  let detectedLocations = detectLocationsRegex(combinedText, config.locations || []);
+  if (detectedLocations.length === 0 && (!config.locations || config.locations.length === 0)) {
+    if (isRomance || isMature) {
+      detectedLocations = [{
+        name: "Lüks Rezidans & Yatak Odası",
+        type: "interior",
+        description: "Gece parlayan şehir manzaralı lüks çatı katı dairesi, geniş yatak, loş romantik abajur ışıkları ve modern dekorasyon.",
+        visualManifest: "Luxurious modern penthouse suite and bedroom at night, floor-to-ceiling panoramic glass windows overlooking glowing city skyline, king-size bed with tumbled silk satin sheets, warm amber ambient bedside lamps, plush velvet sofa, rich interior atmosphere.",
+        reason: "Hikaye temasına uygun olarak otomatik belirlendi (Romantizm/Aşk)"
+      }];
+    } else {
+      detectedLocations = [{
+        name: "Karanlık Yağmurlu Şehir Sokağı",
+        type: "urban",
+        description: "Islak asfalt yansımaları, neon tabelalar ve sarı sokak lambalarıyla dolu gece sokağı.",
+        visualManifest: "Atmospheric rain-soaked urban city street at night, wet asphalt reflections, glowing neon signs, amber streetlamps, steam rising from grates, dramatic graphic novel noir depth.",
+        reason: "Hikaye temasına uygun olarak otomatik belirlendi (Aksiyon/Macera)"
+      }];
+    }
+  }
+
+  const primaryLoc = (config.locations && config.locations[0]) || detectedLocations[0];
+  const locName = primaryLoc ? primaryLoc.name : "Lüks Rezidans";
+  const locDesc = primaryLoc ? (primaryLoc.visualManifest || primaryLoc.description) : "Luxurious modern interior with ambient lighting and floor-to-ceiling windows overlooking city lights";
+
   if (userBeats.length === 4) {
     // USER COMMAND: Detail and spread user's 4 beats across the 4 panels without adding/removing plot
     panels = userBeats.map((beat, i) => {
@@ -2769,7 +2823,7 @@ export function generateProceduralComicScript(
         }
       }
 
-      const imagePrompt = `${shotType} for "${config.topic}". [EXACT SCENE MOMENT]: ${beat}. ${charTokens}. Masterpiece semi-realistic Marvel comic book illustration, crisp ink linework with dynamic cross-hatching, realistic anatomy, lifelike expressive facial acting, atmospheric rim lighting, professional Marvel graphic novel art.`;
+      const imagePrompt = `${shotType} for "${config.topic}". Setting: ${locName}, ${locDesc}. [EXACT SCENE MOMENT]: ${beat}. ${charTokens}. Rich cinematic background environment with furniture and lighting, master graphic novel illustration.`;
 
       return {
         imagePrompt,
@@ -2785,7 +2839,7 @@ export function generateProceduralComicScript(
   } else if (isRomance) {
     panels = [
       {
-        imagePrompt: `Emotive graphic novel opening panel for "${config.topic}". Close-up shot of ${char1} and ${char2} standing close together under warm atmospheric lighting, gentle eye contact filled with unspoken feelings, soft shadows, published graphic novel masterpiece.`,
+        imagePrompt: `Cinematic interior medium shot in the ${locName} (${locDesc}). ${char1} and ${char2} sitting close together on a plush sofa, gentle eye contact filled with unspoken desire, floor-to-ceiling glass window behind them with glowing city night lights, warm amber table lamp lighting, rich interior architecture, published graphic novel masterpiece.`,
         dialogue: `${char2}, seni ilk gördüğüm günden beri aklımda sadece tek bir soru var...`,
         onomatopoeia: "",
         characterNames: [char1, char2],
@@ -2795,7 +2849,7 @@ export function generateProceduralComicScript(
         modestyConcealment: modesty
       },
       {
-        imagePrompt: `Romantic graphic novel second panel for "${config.topic}". Medium two-shot of ${char1} reaching out gently towards ${char2}, emotional vulnerability, warm golden rim-light, delicate facial expressions, pure romance illustration.`,
+        imagePrompt: `Romantic graphic novel two-shot inside the ${locName}. ${char1} standing by the panoramic night-view glass window, reaching out gently and touching ${char2}'s hand, sheer billowing curtains, glowing distant city skyline, warm golden ambient rim-lighting, delicate emotional facial expressions, rich furnished room setting.`,
         dialogue: `Biliyorum... Aramızdaki bu mesafeyi aşmak ikimizi de korkutuyor ama artık kaçamıyorum.`,
         onomatopoeia: "",
         characterNames: [char1, char2],
@@ -2805,7 +2859,7 @@ export function generateProceduralComicScript(
         modestyConcealment: modesty
       },
       {
-        imagePrompt: `Intense romantic turning point panel for "${config.topic}". Cinematic angle capturing ${char1} and ${char2} in a passionate close embrace, hands entwined, breathless proximity, romantic candlelit amber and rose lighting, master draftsmanship.`,
+        imagePrompt: `Intimate bedroom suite scene inside the ${locName}. Cinematic angle capturing ${char1} and ${char2} in a passionate close embrace near the king-size bed, hands entwined in hair, breathless proximity, romantic candlelit amber and rose lighting, luxurious upholstered headboard, draped satin silk textures, master draftsmanship.`,
         dialogue: `Bütün dünya karşımızda olsa bile, senin yanında olmak bana yetiyor.`,
         onomatopoeia: "",
         characterNames: [char1, char2],
@@ -2815,7 +2869,7 @@ export function generateProceduralComicScript(
         modestyConcealment: modesty
       },
       {
-        imagePrompt: `Romantic dramatic cliffhanger panel for "${config.topic}". Panoramic closing shot of ${char1} and ${char2} silhouetted against the glowing city skyline at dusk, shared vow, emotional resonance, beautiful comic art.`,
+        imagePrompt: `Romantic dramatic closing panel inside the ${locName}. Panoramic frame of ${char1} and ${char2} resting together in embrace, floor-to-ceiling panoramic glass windows reflecting moonlit clouds and glowing city skyline, warm bedroom nightstand lamps, rich room background depth, emotional vow.`,
         dialogue: `Söz ver bana; yarın ne olursa olsun bu anı asla unutmayacağız.`,
         onomatopoeia: "",
         characterNames: [char1, char2],
@@ -2829,7 +2883,7 @@ export function generateProceduralComicScript(
     // Action / Mystery / General
     panels = [
       {
-        imagePrompt: `Dynamic graphic novel establishing panel for "${config.topic}". Wide shot of ${char1} surveying the mysterious environment under high-contrast dramatic lighting, cautious stance, crisp comic linework.`,
+        imagePrompt: `Dynamic graphic novel establishing panel for "${config.topic}". Setting: ${locName}, ${locDesc}. Wide shot of ${char1} surveying the detailed urban environment under high-contrast dramatic lighting, cautious stance, crisp comic linework, rich architectural background depth.`,
         dialogue: `Burada bir gariplik var... İzler tam bu noktada son buluyor.`,
         onomatopoeia: "",
         characterNames: [char1],
@@ -2838,7 +2892,7 @@ export function generateProceduralComicScript(
         cameraAngle: "standard"
       },
       {
-        imagePrompt: `Suspenseful second panel for "${config.topic}". Medium angle of ${char1} discovering a crucial clue while ${char2} steps forward in surprise, tense shadows, atmospheric graphic novel storytelling.`,
+        imagePrompt: `Suspenseful second panel for "${config.topic}". Setting: ${locName}, ${locDesc}. Medium angle of ${char1} discovering a crucial clue while ${char2} steps forward in surprise, brick building walls with emergency fire-escape stairs and steam, tense shadows, atmospheric graphic novel storytelling.`,
         dialogue: `${char1}, arkana bak! Tahmin ettiğimizden çok daha erken geldiler!`,
         onomatopoeia: "TIK!",
         characterNames: charNames,
@@ -2847,7 +2901,7 @@ export function generateProceduralComicScript(
         cameraAngle: "over_shoulder"
       },
       {
-        imagePrompt: `High-octane climax panel for "${config.topic}". Dynamic action frame of ${char1} taking decisive action, intense energy and dramatic comic composition, bold ink lines, vibrant primary colors.`,
+        imagePrompt: `High-octane climax panel for "${config.topic}". Setting: ${locName}, ${locDesc}. Dynamic action frame of ${char1} taking decisive action, industrial metal trusses and shattered glass in background, intense energy and dramatic comic composition, bold ink lines, vibrant primary colors.`,
         dialogue: `Geri çekil! Bu kapıyı açmanın tek bir yolu var, o da şimdi!`,
         onomatopoeia: "GÜMM!",
         characterNames: [char1],
@@ -2856,7 +2910,7 @@ export function generateProceduralComicScript(
         cameraAngle: "low_angle_heroic"
       },
       {
-        imagePrompt: `Dramatic cliffhanger panel for "${config.topic}". Stark graphic novel shot revealing the unexpected consequence or threshold, deep shadow contrast, leaving the reader on the edge of their seat.`,
+        imagePrompt: `Dramatic cliffhanger panel for "${config.topic}". Setting: ${locName}, ${locDesc}. Stark graphic novel shot on the high building ledge overlooking glowing skyscrapers at dusk, deep shadow contrast, leaving the reader on the edge of their seat.`,
         dialogue: `İnanamıyorum... Asıl macera şimdi başlıyor!`,
         onomatopoeia: "",
         characterNames: charNames,
@@ -2871,8 +2925,6 @@ export function generateProceduralComicScript(
     panels[1].dialogue = `${userDirection.slice(0, 80)}...`;
     panels[1].imagePrompt += ` Specifically featuring: ${userDirection.slice(0, 100)}.`;
   }
-
-  const detectedLocations = detectLocationsRegex(combinedText, config.locations || []);
 
   return {
     layoutType: "grid-2x2",
@@ -2910,6 +2962,49 @@ export async function generateComicScript(
       });
     }
   });
+
+  // Fallback: If no location was explicitly specified or detected, establish an authentic primary setting based on topic/genre!
+  if (allActiveLocations.length === 0) {
+    const isRomanceTopic = isRomanceOrEmotionalTheme(config.topic, config.tone, config.intro, userDirection);
+    const isMatureTopic = isIntimateOrMatureScene(`${config.topic} ${config.intro} ${userDirection}`);
+    const isActionTopic = isGrittyOrActionScene(`${config.topic} ${config.intro} ${userDirection}`);
+
+    let defaultLoc: DetectedLocation;
+    if (isRomanceTopic || isMatureTopic) {
+      defaultLoc = {
+        name: "Lüks Rezidans & Yatak Odası",
+        type: "interior",
+        description: "Gece parlayan şehir manzaralı lüks çatı katı dairesi, geniş yatak, loş romantik abajur ışıkları ve modern dekorasyon.",
+        visualManifest: "Luxurious modern penthouse suite and bedroom at night, floor-to-ceiling panoramic glass windows overlooking glowing city skyline, king-size bed with tumbled silk satin sheets, warm amber ambient bedside lamps, plush velvet sofa, rich interior atmosphere.",
+        reason: "Hikaye temasına uygun olarak otomatik belirlendi (Romantizm/Aşk)"
+      };
+    } else if (isActionTopic) {
+      defaultLoc = {
+        name: "Karanlık Yağmurlu Şehir Sokağı",
+        type: "urban",
+        description: "Islak asfalt yansımaları, neon tabelalar ve sarı sokak lambalarıyla dolu gece sokağı.",
+        visualManifest: "Atmospheric rain-soaked urban city street at night, wet asphalt reflections, glowing neon signs, amber streetlamps, steam rising from grates, dramatic graphic novel noir depth.",
+        reason: "Hikaye temasına uygun olarak otomatik belirlendi (Aksiyon/Gerilim)"
+      };
+    } else {
+      defaultLoc = {
+        name: "Atmosferik Tasarım Odası",
+        type: "interior",
+        description: "Geniş pencereli, sıcak ahşap detaylı ve zengin ışıklandırmalı modern iç mekan.",
+        visualManifest: "Stylishly furnished modern graphic novel interior room, large window with natural atmospheric lighting, warm textured wooden walls, cinematic environmental storytelling depth.",
+        reason: "Hikaye temasına uygun olarak otomatik belirlendi"
+      };
+    }
+    allActiveLocations.push({
+      id: `loc_${generateId()}`,
+      name: defaultLoc.name,
+      type: defaultLoc.type,
+      description: defaultLoc.description,
+      visualManifest: defaultLoc.visualManifest,
+      tags: ["Otomatik Tespit", "Tematik Mekan"]
+    });
+    preDetectedLocations.push(defaultLoc);
+  }
 
   const effectiveCast = config.cast.map(c => {
     const matchChange = preDetectedOutfitChanges.find(oc => isNameMatch(oc.characterName, c.name));
@@ -3117,7 +3212,13 @@ export async function generateComicScript(
     2. ONE CRISP FROZEN MOMENT: Describe exactly ONE clear, focused action or emotional interaction. Do NOT overload the prompt with multiple sequential actions.
     3. MANDATORY CHARACTER VISUAL & ATTIRE TOKENS: Whenever a character is in the panel, explicitly name them and their attire: e.g. "Featuring [Name] (wearing [their attire or intimate state])".
     4. EXPRESSIONS & STAGING: Detail their exact facial expression (e.g. "wide startled eyes, clenched jaw"), bodily posture (e.g. "leaning forward aggressively over the wooden desk"), and hand gestures.
-    5. ENVIRONMENT & LIGHTING: Explicitly mention the background setting details and atmospheric lighting (e.g. "in the dimly lit rainy alleyway, amber streetlamp glow reflecting on wet cobblestones").
+    5. ENVIRONMENT & REAL-WORLD SCENE SETTING (MUTLAK ARKA PLAN MEKAN KURALI):
+       - EVERY SINGLE PANEL MUST HAVE A FULLY REALIZED, DETAILED REAL-WORLD SCENE BACKGROUND!
+       - You MUST explicitly describe the physical room, walls, windows, furniture, city lights, lighting, and environmental atmosphere in every single panel's 'imagePrompt'.
+       - STRICTEST PROHIBITION (MUTLAK YASAK):
+         * NEVER describe characters against plain, grey, white, empty, or studio backdrops!
+         * NEVER output character turnaround sheets, multi-view model sheets, front/back view layouts, or idle T-poses inside a comic panel!
+         * Comic panels are living dramatic scene moments inside an actual environment (e.g. inside a luxurious penthouse bedroom, sitting at a candlelit table, leaning against a rainy window overlooking the city).
     6. ZERO UNINVITED CHARACTERS: ONLY characters explicitly declared in the Cast list (${effectiveCast.map(c => c.name).join(", ")}) may appear. If a panel is about one specific character, DO NOT include any other character.
     7. COSTUME CONSISTENCY & INTIMACY/UNDRESSING EXCEPTION (TÜM KARELERDE TUTARLI GİYİM):
        - A comic page is a single continuous scene sequence. Characters CANNOT arbitrarily swap clothes between panels.
@@ -3127,6 +3228,8 @@ export async function generateComicScript(
          DO NOT force them to wear winter jackets, heavy coats, or tactical boots in bed!
          Follow Rule 8 for intimate bedroom/sensual attire (e.g. unbuttoned silk shirt, silk satin sleepwear, or tastefully draped sheets over bare shoulders and backs).
          Maintain that consistent intimate state across the bedroom sequence!
+    8. DYNAMIC CHARACTER INTERACTION (NO STATIC MODEL SHEET STANDING):
+       - Characters must be actively interacting with each other or the environment: embracing, touching, whispering, gesturing, sitting close on a couch, or looking into each other's eyes. NEVER draw two characters standing stiffly side-by-side facing the camera like a clothing catalog model sheet!
     ${config.contentRating === "pg18" ? `8. PG-18 MATURE ADULT GRAPHIC NOVEL DIRECTIVE (SENSUAL PASSION & SOPHISTICATED NOIR/ADULT THEMES - İNCE DENGE):
        - If the story presents romantic intimacy, bedroom allure, passionate encounters, or dark edgy noir drama:
          * UNLEASH MAXIMUM SENSUAL & EMOTIONAL PASSION! Depict intense magnetic closeness, heated whispers, parting lips, breathless embraces, bare shoulders/collarbones, and seductive candlelit/moonlit ambiance.
@@ -3621,9 +3724,10 @@ export async function generateSinglePanelImage(
       ? `Featuring ${defaultChar.name} (${attire.physicalTraits || defaultChar.description}).`
       : `Featuring ${defaultChar.name} (${attire.physicalTraits || defaultChar.description}, wearing ${attire.outfitDescription}).`;
   }
+  characterLeadText = cleanModelSheetArtifacts(characterLeadText);
 
-  // 7. Sanitize panelPrompt to strip conflicting or legacy clothing strings
-  let sanitizedPanelPrompt = panelPrompt;
+  // 7. Sanitize panelPrompt to strip conflicting, legacy, or model-sheet strings
+  let sanitizedPanelPrompt = cleanModelSheetArtifacts(panelPrompt);
   matchedCharacters.forEach(c => {
     sanitizedPanelPrompt = sanitizedPanelPrompt
       .replace(new RegExp(`Featuring\\s+${c.name}\\s*\\([^)]*\\)[:\\s,.]*`, "gi"), "")
@@ -3685,6 +3789,18 @@ export async function generateSinglePanelImage(
 
   if (matchedLocation) {
     locationGuideText = `Setting: ${matchedLocation.name} (${matchedLocation.type}), ${matchedLocation.visualManifest || matchedLocation.description}`;
+  } else if (locations.length > 0) {
+    const firstLoc = locations[0];
+    locationGuideText = `Setting: ${firstLoc.name} (${firstLoc.type}), ${firstLoc.visualManifest || firstLoc.description}`;
+  } else {
+    // Critical Fallback Setting: NEVER allow an empty background void!
+    if (isRomance || isMaturePanel) {
+      locationGuideText = `Setting: Luxurious modern penthouse lounge with floor-to-ceiling panoramic glass windows overlooking glowing city night skyline, warm ambient table lamp glow, plush velvet sofa, rich mahogany interior architecture, atmospheric cinematic background depth`;
+    } else if (tone && /action|sci-fi|cyberpunk|noir/i.test(tone)) {
+      locationGuideText = `Setting: Rain-soaked neon-lit metropolitan street at night, reflective wet asphalt, glowing amber and cyan neon signs, steam rising from grates, dramatic graphic novel urban background depth`;
+    } else {
+      locationGuideText = `Setting: Richly detailed graphic novel interior room, large window with natural atmospheric lighting, warm textured wooden walls, cinematic environmental storytelling depth`;
+    }
   }
 
   const isMaturePanel = isIntimatePanel || (contentRating === "pg18" ? true : (contentRating !== "pg13" && isRomance));
@@ -3698,7 +3814,12 @@ export async function generateSinglePanelImage(
     styleDirectives = `Masterpiece graphic novel panel art in ${style || "Modern Comic"} style, crisp bold black ink outlines, volumetric cel-shading, vibrant cinematic colors, impeccable human anatomy with expressive faces, atmospheric lighting, sharp focus, no text, no speech bubbles.`;
   }
 
-  const rawAssembledPrompt = `${characterLeadText} ${sanitizedPanelPrompt}.${locationGuideText ? ` ${locationGuideText}.` : ""}${directorStagingText ? ` Staging: ${directorStagingText}.` : ""}${referenceGuideText ? ` ${referenceGuideText}` : ""} ${styleDirectives}`;
+  // Only inject "attached visual reference" text if the engine actually supports multimodal image input (Gemini Imagen)
+  // Text-only engines like Pollinations FLUX or Together FLUX misinterpret "character sheet" text as an instruction to draw a model sheet!
+  const hasMultimodalSupport = imageProvider === "gemini" && inlineImageParts.length > 0;
+  const effectiveRefGuide = hasMultimodalSupport ? referenceGuideText : "";
+
+  const rawAssembledPrompt = `${characterLeadText} ${sanitizedPanelPrompt}.${locationGuideText ? ` ${locationGuideText}.` : ""}${directorStagingText ? ` Staging: ${directorStagingText}.` : ""}${effectiveRefGuide ? ` ${effectiveRefGuide}` : ""} ${styleDirectives}`;
 
   const textPrompt = sanitizeAndOptimizePrompt(rawAssembledPrompt, "pollinations");
 
