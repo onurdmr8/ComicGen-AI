@@ -2347,14 +2347,85 @@ function buildEnrichedBeatsForShortPrompt(
   isRomance: boolean,
   isMature: boolean
 ): EnrichedBeat[] {
-  const c1 = cast[0]?.name || "Kaya";
-  const c2 = cast[1]?.name || (cast.length > 1 ? cast[1].name : "Leyla");
+  let c1 = cast[0]?.name || "Kaya";
+  let c2 = cast[1]?.name || (cast.length > 1 ? cast[1].name : "Leyla");
   const lowerPrompt = prompt.toLowerCase();
   const lowerLoc = locName.toLowerCase();
 
+  // If prompt explicitly mentions characters by name, honor that order:
+  const mentioned = cast.filter(c => new RegExp(`\\b${c.name}\\b`, "i").test(prompt));
+  if (mentioned.length >= 2) {
+    c1 = mentioned[0].name;
+    c2 = mentioned[1].name;
+  } else if (mentioned.length === 1) {
+    c1 = mentioned[0].name;
+    const other = cast.find(c => c.name !== c1);
+    if (other) c2 = other.name;
+  }
+
+  const isDance = /dans|dance|pist|disko/i.test(`${lowerPrompt} ${lowerLoc}`);
+  const isFight = /kavga|dövüş|saldırı|baskın|çatışma|fight|combat/i.test(`${lowerPrompt}`);
   const isBar = /bar|gece\s+kulübü|pub|içki|kokteyl|tabure|kadeh/i.test(`${lowerPrompt} ${lowerLoc}`);
   const isCafe = /kafe|kahve|bistro|pastane|restoran|çay|lokanta/i.test(`${lowerPrompt} ${lowerLoc}`);
   const isStreet = /sokak|cadde|yağmur|yürüyüş|gece\s+sokağı/i.test(`${lowerPrompt} ${lowerLoc}`);
+
+  if (isDance) {
+    return [
+      {
+        sceneAction: `Establishing medium shot inside the vibrant neon-lit bar and lounge. ${c1} is sitting gracefully at the sleek illuminated mahogany counter with a cocktail, soaking in the pulsing music and energetic club ambiance.`,
+        dialogue: `${c1}: Bu mekanın ritmi ve atmosferi bu gece insanı yerinde durdurmuyor...`,
+        characters: [c1],
+        cameraAngle: "standard"
+      },
+      {
+        sceneAction: `Dynamic medium two-shot at the counter. ${c2} approaches with a confident charismatic smile, leaning casually against the bar and extending an inviting hand toward ${c1} to join the dance floor.`,
+        dialogue: `${c2}: Tek başına oturup bu harika parçayı kaçırmana izin veremem. Benimle dans eder misin?`,
+        characters: [c1, c2],
+        cameraAngle: "over_shoulder"
+      },
+      {
+        sceneAction: `Dynamic full-body two-shot on the crowded dance floor under pulsating magenta, cyan, and gold strobe lights. ${c1} and ${c2} step into the rhythm together, hands clasped and smiling warmly as they move to the upbeat beat.`,
+        dialogue: `${c1}: Pek dans etmem derdim ama bu teklifi geri çevirmek imkansız göründü!`,
+        characters: [c1, c2],
+        cameraAngle: "standard"
+      },
+      {
+        sceneAction: `Intimate cinematic close two-shot slow dancing under soft purple club rim lighting. ${c2}'s hand gently rests on ${c1}'s waist, ${c1}'s arm drapes over ${c2}'s shoulder, bodies swaying close with intense romantic eye contact as the room blurs into neon bokeh.`,
+        dialogue: `${c2}: Gördün mü? Bütün o kalabalık silindi, sanki bu pistte sadece ikimiz varız.`,
+        characters: [c1, c2],
+        cameraAngle: "romantic_dream"
+      }
+    ];
+  }
+
+  if (isFight) {
+    return [
+      {
+        sceneAction: `Tense wide establishing confrontation shot inside ${locName}. ${c1} stands in a defensive combat stance, fists clenched with intense narrowed eyes staring down ${c2}.`,
+        dialogue: `${c1}: Buraya kadar! Bu işi burada ve şimdi bitireceğiz.`,
+        characters: [c1, c2],
+        cameraAngle: "low_angle_hero"
+      },
+      {
+        sceneAction: `Dynamic action medium shot. ${c2} lunges forward aggressively, throwing a powerful direct punch while ${c1} raises an arm to deflect the impact.`,
+        dialogue: `${c2}: Çok konuştun, bakalım yumrukların da lafların kadar sert mi!`,
+        characters: [c1, c2],
+        cameraAngle: "dutch_angle"
+      },
+      {
+        sceneAction: `High-impact close-up action clash. Gripping each other by the collars with strained muscles and fierce gritted teeth, dynamic motion blur framing their struggle.`,
+        dialogue: `${c1}: Kolay pes edeceğimi sandıysan fena halde yanılıyorsun!`,
+        characters: [c1, c2],
+        cameraAngle: "close_up_eyes"
+      },
+      {
+        sceneAction: `Atmospheric dramatic aftermath two-shot. Both characters breathing heavily, standing apart with bruised knuckles and lingering defiance as dust and shadows settle around them.`,
+        dialogue: `${c2}: Bu hesap henüz kapanmadı...`,
+        characters: [c1, c2],
+        cameraAngle: "dramatic_split"
+      }
+    ];
+  }
 
   if (isBar) {
     return [
@@ -3257,9 +3328,11 @@ export async function generateComicScript(
        - A comic page MUST show a clear visual evolution of the story across the 4 panels — NEVER 4 panels of characters in the same static pose!
        - The 4 panels MUST depict distinct, progressive physical actions, hand gestures, and body language:
          * Panel 1 (Establishing Action & Mood): Initial arrival, taking a seat, looking around the room pensively with a glass/prop in hand, or entering through a door.
-         * Panel 2 (Engagement & Movement): Active interaction begins — pulling up a chair/stool, stepping forward, gesturing with a welcoming smile, or leaning in.
-         * Panel 3 (Peak Action / Emotional Climax): The most dynamic and intense moment of the scene — happily clinking glasses in a celebratory toast with genuine shared laughter, gripping a hand, touching shoulders, intense eye-to-eye chemistry, or dramatic confrontation.
-         * Panel 4 (Resolution / Emotional Payoff): The narrative aftermath — whispering closely, resting chin on hand with a soft smile, exchanging a lingering look as the background blurs, or stepping out into the night together.
+         * Panel 2 (Engagement & Movement): Active interaction begins — pulling up a chair/stool, stepping forward, gesturing with a welcoming smile, inviting to dance, or leaning in.
+         * Panel 3 (Peak Action / Emotional Climax): The most dynamic and intense moment of the scene — actively dancing together on the pulsing dance floor, happily clinking glasses in a celebratory toast, gripping hands, intense eye-to-eye chemistry, or dynamic physical action.
+         * Panel 4 (Resolution / Emotional Payoff): The narrative aftermath / intimate climax — close slow dancing with hands on waist and shoulders, whispering closely, resting chin on hand with a soft smile, exchanging a lingering romantic look as the background blurs.
+       - SHORT PROMPT PROGRESSION RULE: When the user enters a concise action prompt (e.g. "X ve Y barda tanıştı ve dans etti"):
+         * You MUST progress through the stated actions step-by-step: Panel 1 = Bar counter meeting, Panel 2 = Interaction & invitation to the dance floor, Panel 3 = Moving to dance floor / lively rhythm dancing, Panel 4 = Intimate close dance & romantic connection. DO NOT keep them sitting at the bar stools for all 4 panels!
        - Every panel's 'imagePrompt' MUST vividly describe what their HANDS are doing, their HEAD TILT, their FACIAL EXPRESSION, and their PHYSICAL ACTION!
     1. EXPLICIT CAMERA FRAMING: Every 'imagePrompt' MUST begin with a clear cinematic camera shot (e.g. "Medium close-up shot", "Dramatic wide-angle establishing shot", "Dynamic low-angle two-shot", "Over-the-shoulder reaction shot").
     2. ONE CRISP FROZEN MOMENT: Describe exactly ONE clear, focused action or emotional interaction. Do NOT overload the prompt with multiple sequential actions.
