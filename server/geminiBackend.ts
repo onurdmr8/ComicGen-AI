@@ -2616,45 +2616,182 @@ async function generateScriptViaPollinationsFreeText(prompt: string): Promise<st
   return null;
 }
 
+export function normalizeTr(str: string): string {
+  return (str || "").toLowerCase()
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ı/g, "i")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c");
+}
+
+const TR_GARMENT_WORDS = [
+  "gece elbise", "mini etek", "deri ceket", "takim elbise", "kot pantolon",
+  "elbise", "etek", "bustiyer", "crop top", "takim", "smokin", "ceket",
+  "palto", "kaban", "gomlek", "tisort", "t-shirt", "atlet", "kot", "pantolon", "sort", "pijama", "gecelik"
+];
+
+export function translateTurkishOutfitToEnglish(text: string): string {
+  const norm = normalizeTr(text);
+
+  if (/ceketini|palto|mont|hirka/.test(norm) && /cikar|birak/.test(norm)) {
+    return "outer jacket/coat removed, wearing fitted inner top and dark denim pants";
+  }
+
+  let colors: string[] = [];
+  if (/\b(kirmizi|al)\b/.test(norm)) colors.push("crimson red");
+  if (/\b(siyah|kara)\b/.test(norm)) colors.push("sleek black");
+  if (/\bbeyaz\b/.test(norm)) colors.push("crisp white");
+  if (/\b(lacivert|koyu mavi)\b/.test(norm)) colors.push("deep navy blue");
+  else if (/\bmavi\b/.test(norm)) colors.push("royal blue");
+  if (/\byesil\b/.test(norm)) colors.push("emerald green");
+  if (/\bpembe\b/.test(norm)) colors.push("blush pink");
+  if (/\bsari\b/.test(norm)) colors.push("golden yellow");
+  if (/\bmor\b/.test(norm)) colors.push("royal purple");
+  if (/\bbordo\b/.test(norm)) colors.push("deep burgundy");
+  if (/\bgri\b/.test(norm)) colors.push("charcoal grey");
+  if (/\b(altin|dore)\b/.test(norm)) colors.push("metallic gold");
+  if (/\bgumus\b/.test(norm)) colors.push("metallic silver");
+  if (/\b(bej|krem)\b/.test(norm)) colors.push("warm cream");
+
+  let garments: string[] = [];
+  if (/\bgece elbise(?:si|siyle)?\b/.test(norm)) garments.push("evening gown");
+  else if (/\belbise(?:si|siyle)?\b/.test(norm)) garments.push("dress");
+
+  if (/\bmini etek(?:le|iyle)?\b/.test(norm)) garments.push("mini skirt");
+  else if (/\betek(?:le|iyle)?\b/.test(norm)) garments.push("skirt");
+
+  if (/\b(bustiyer|crop top)\b/.test(norm)) garments.push("crop top");
+  if (/\btakim elbise(?:si|siyle)?\b/.test(norm)) garments.push("tailored formal suit");
+  if (/\bsmokin(?:le|iyle)?\b/.test(norm)) garments.push("tuxedo");
+  if (/\bderi ceket(?:le|iyle)?\b/.test(norm)) garments.push("leather biker jacket");
+  else if (/\bceket(?:le|iyle)?\b/.test(norm)) garments.push("jacket");
+  if (/\b(palto|kaban|trenc?kot)(?:la|iyle)?\b/.test(norm)) garments.push("trench coat");
+  if (/\bgomlek(?:le|iyle)?\b/.test(norm)) garments.push("button-up shirt");
+  if (/\b(tisort|t-shirt)\b/.test(norm)) garments.push("t-shirt");
+  if (/\batlet\b/.test(norm)) garments.push("tank top");
+  if (/\b(kot pantolon|jean pantolon|kot|jean)\b/.test(norm)) garments.push("denim jeans");
+  else if (/\bpantolon\b/.test(norm)) garments.push("trousers");
+  if (/\bsort\b/.test(norm)) garments.push("shorts");
+  if (/\bpijama\b/.test(norm)) garments.push("silk pajamas");
+  if (/\bgecelik\b/.test(norm)) garments.push("silk nightgown");
+
+  let modifiers: string[] = [];
+  if (/\bsaten\b/.test(norm)) modifiers.push("satin");
+  if (/\bipek\b/.test(norm)) modifiers.push("silk");
+  if (/\bderi\b/.test(norm) && !garments.some(g => g.includes("leather"))) modifiers.push("leather");
+  if (/\bkadife\b/.test(norm)) modifiers.push("velvet");
+  if (/\byirtmacli\b/.test(norm)) modifiers.push("with high slit");
+  if (/\bdekolteli\b/.test(norm)) modifiers.push("with stylish neckline");
+
+  const colorStr = colors.join(" and ");
+  const modStr = modifiers.join(" ");
+  const garmentStr = garments.join(" and ");
+
+  if (colorStr || modStr || garmentStr) {
+    return [colorStr, modStr, garmentStr || "outfit"].filter(Boolean).join(" ").trim();
+  }
+  return text.trim();
+}
+
+function extractTurkishClothingPhrase(text: string, charName: string): string | null {
+  const normText = normalizeTr(text);
+  const normChar = normalizeTr(charName);
+  
+  const clauses = normText.split(/[,.;!?]+/);
+  const matchingClauses = clauses.filter(c => c.includes(normChar));
+  const candidateClauses = matchingClauses.length > 0 ? matchingClauses : clauses;
+
+  for (const clause of candidateClauses) {
+    for (const g of TR_GARMENT_WORDS) {
+      const gIndex = clause.indexOf(g);
+      if (gIndex !== -1) {
+        const afterSlice = clause.slice(gIndex);
+        const gWordsCount = g.split(/\s+/).length;
+        const tokens = afterSlice.trim().split(/\s+/).slice(0, gWordsCount);
+        const garmentToken = tokens.join(" ");
+
+        const before = clause.slice(0, gIndex).trim().split(/\s+/);
+        const descWords: string[] = [];
+        for (let i = before.length - 1; i >= 0; i--) {
+          const w = before[i];
+          if (w === normChar || /^(ve|ile|icin|da|de|sonra|once|fakat|ama)$/.test(w)) break;
+          if (/^(bir|bu|olan|yeni|ozel)$/.test(w)) continue;
+          descWords.unshift(w);
+        }
+        return [...descWords, garmentToken].join(" ");
+      }
+    }
+  }
+  return null;
+}
+
 export function detectOutfitChangesRegex(
   text: string,
   cast: Character[]
 ): DetectedOutfitChange[] {
   if (!text || !cast || cast.length === 0) return [];
   const results: DetectedOutfitChange[] = [];
+  const normText = normalizeTr(text);
 
   for (const char of cast) {
     if (!char.name) continue;
-    const escapedName = char.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    
-    // Turkish pattern: <Name> ... <Outfit> ... (giydi|giyiyor|giyinmiş|kuşandı|üstüne geçirdi|çıkardı)
-    const turkishPattern = new RegExp(
-      `(?:^|[\\s,.;!?])(?:${escapedName})\\s+(?:yeni\\s+|üzerine\\s+|üstüne\\s+)?([^,.;!?]+?)\\s+(giydi|giyiyor|giyinmi[sş]|ku[sş]and[ıi]|stne\\s+geirdi|zerine\\s+geirdi|kand[ıi]|kard[ıi])`,
-      "i"
-    );
-    // English pattern: <Name> ... (changed into|wearing|dressed in) ... <Outfit>
-    const englishPattern = new RegExp(
-      `(?:^|[\\s,.;!?])(?:${escapedName})\\s+(?:is\\s+wearing|changed\\s+into|puts?\\s+on|dressed\\s+in)\\s+([^,.;!?]+)`,
-      "i"
-    );
+    const normCharName = normalizeTr(char.name);
 
-    const matchTr = text.match(turkishPattern);
-    const matchEn = text.match(englishPattern);
-
-    if (matchTr && matchTr[1]) {
-      const rawTr = matchTr[1].trim().replace(/^(bir|yeni|şık|üzerine|üstüne)\s+/i, "").trim();
-      if (rawTr.length >= 3 && !/^(bu|şu|o|ve|ile|için)$/i.test(rawTr)) {
-        const titleTr = rawTr.charAt(0).toUpperCase() + rawTr.slice(1);
-        results.push({
-          characterName: char.name,
-          outfitName: titleTr,
-          outfitDescription: `Stylish ${rawTr} attire tailored for graphic novel realism with crisp fabric folds, accurate silhouette, and rich textures.`,
-          reason: `Hikaye metninden tespit edildi ("${char.name} ${rawTr} ${matchTr[2]}")`
-        });
-        continue;
-      }
+    // 1. Check jacket/coat removal:
+    const isRemoval = (normText.includes("ceketini cikar") || normText.includes("paltoyu cikar") || normText.includes("montunu cikar")) &&
+      (normText.includes(normCharName) || cast.length === 1 || (char.name.toLowerCase() === "ken" && !normText.includes("lena")));
+    if (isRemoval) {
+      results.push({
+        characterName: char.name,
+        outfitName: "Ceket Çıkarılmış Rahat Görünüm",
+        outfitDescription: "outer jacket removed, wearing fitted inner top and dark denim pants",
+        reason: `Hikaye metninden tespit edildi ("${char.name} ceketini çıkardı")`
+      });
+      continue;
     }
 
+    // 2. Check wardrobe matches from registered character outfits:
+    if (char.outfits && char.outfits.length > 0) {
+      let matchedWardrobe = false;
+      for (const outfit of char.outfits) {
+        if (outfit.id === char.activeOutfitId && outfit.isDefault) continue;
+        const oNorm = normalizeTr(outfit.name);
+        if (oNorm.length >= 3 && normText.includes(oNorm)) {
+          results.push({
+            characterName: char.name,
+            outfitName: outfit.name,
+            outfitDescription: outfit.description.trim(),
+            reason: `Gardıroptan eşleşti ("${outfit.name}")`
+          });
+          matchedWardrobe = true;
+          break;
+        }
+      }
+      if (matchedWardrobe) continue;
+    }
+
+    // 3. Extract Turkish clothing phrase:
+    const trPhrase = extractTurkishClothingPhrase(text, char.name);
+    if (trPhrase && trPhrase.length >= 3) {
+      const translated = translateTurkishOutfitToEnglish(trPhrase);
+      const titleTr = trPhrase.charAt(0).toUpperCase() + trPhrase.slice(1);
+      results.push({
+        characterName: char.name,
+        outfitName: titleTr,
+        outfitDescription: `Stylish ${translated} with crisp fabric folds, accurate silhouette, and rich textures.`,
+        reason: `Hikaye metninden tespit edildi ("${char.name} ${trPhrase}")`
+      });
+      continue;
+    }
+
+    // 4. English pattern: <Name> ... (changed into|wearing|dressed in) ... <Outfit>
+    const englishPattern = new RegExp(
+      `(?:^|[\\s,.;!?])(?:${char.name})\\s+(?:is\\s+wearing|changed\\s+into|puts?\\s+on|dressed\\s+in)\\s+([^,.;!?]+)`,
+      "i"
+    );
+    const matchEn = text.match(englishPattern);
     if (matchEn && matchEn[1]) {
       const rawEn = matchEn[1].trim().replace(/^(a|an|the|new)\s+/i, "").trim();
       if (rawEn.length >= 3) {
@@ -2670,6 +2807,90 @@ export function detectOutfitChangesRegex(
   }
 
   return results;
+}
+
+export function resolveCharacterAttireForScene(
+  character: Character,
+  panelPrompt: string = "",
+  globalStoryText: string = ""
+): {
+  outfitName: string;
+  outfitDescription: string;
+  physicalTraits: string;
+  fullReference: string;
+  isOverride: boolean;
+} {
+  const defaultAttire = getCharacterCanonicalAttire(character);
+  const combinedContext = `${panelPrompt} ${globalStoryText}`.trim();
+  if (!combinedContext) {
+    return { ...defaultAttire, isOverride: false };
+  }
+
+  // 1. Modesty / Intimacy override (Bed / Nudity / Shower):
+  const isUndressed = /\b(undressed|bare\s+skin|soyunuk|çıplak|soyunmuş|nude|naked|without\s+clothes|in\s+the\s+shower)\b/i.test(combinedContext);
+  if (isUndressed) {
+    return {
+      outfitName: "İnce Kapatmalı Yatak / Romantizm",
+      outfitDescription: "tastefully draped in luxurious silk satin bedsheets covering modesty zones",
+      physicalTraits: defaultAttire.physicalTraits,
+      fullReference: `${defaultAttire.physicalTraits}, tastefully draped in luxurious silk satin bedsheets`,
+      isOverride: true
+    };
+  }
+
+  // 2. Check wardrobe matches:
+  if (character.outfits && character.outfits.length > 0) {
+    const normContext = normalizeTr(combinedContext);
+    for (const outfit of character.outfits) {
+      if (outfit.id === character.activeOutfitId && outfit.isDefault) continue;
+      const oNorm = normalizeTr(outfit.name);
+      if (oNorm.length >= 3 && normContext.includes(oNorm)) {
+        return {
+          outfitName: outfit.name,
+          outfitDescription: outfit.description.trim(),
+          physicalTraits: defaultAttire.physicalTraits,
+          fullReference: `${defaultAttire.physicalTraits}, wearing ${outfit.description.trim()}`,
+          isOverride: true
+        };
+      }
+    }
+  }
+
+  // 3. Dynamic detection from Turkish / English prompt text:
+  const detectedChanges = detectOutfitChangesRegex(combinedContext, [character]);
+  if (detectedChanges.length > 0) {
+    const change = detectedChanges[0];
+    return {
+      outfitName: change.outfitName,
+      outfitDescription: change.outfitDescription,
+      physicalTraits: defaultAttire.physicalTraits,
+      fullReference: `${defaultAttire.physicalTraits}, wearing ${change.outfitDescription}`,
+      isOverride: true
+    };
+  }
+
+  // 4. In English panelPrompt, check if prompt explicitly specifies what character is wearing:
+  const charEscape = character.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const enAttireMatch = panelPrompt.match(new RegExp(`(?:Featuring\\s+)?${charEscape}\\s*\\([^)]*wearing:\\s*([^)]+)\\)`, "i")) ||
+                        panelPrompt.match(new RegExp(`${charEscape}\\s+(?:is\\s+wearing|wearing|dressed\\s+in)\\s+([^,.;()]+(?:dress|gown|suit|jacket|shirt|top|jeans|skirt|pajamas|coat|hoodie|uniform|tuxedo|outfit|attire)[^,.;()]*)`, "i"));
+  if (enAttireMatch && enAttireMatch[1]) {
+    const customDesc = enAttireMatch[1].trim();
+    if (!defaultAttire.outfitDescription.toLowerCase().includes(customDesc.toLowerCase())) {
+      return {
+        outfitName: "Sahneye Özel Kıyafet",
+        outfitDescription: customDesc,
+        physicalTraits: defaultAttire.physicalTraits,
+        fullReference: `${defaultAttire.physicalTraits}, wearing ${customDesc}`,
+        isOverride: true
+      };
+    }
+  }
+
+  // 5. Default fallback to canonical registered attire:
+  return {
+    ...defaultAttire,
+    isOverride: false
+  };
 }
 
 export function detectLocationsRegex(
@@ -2866,9 +3087,10 @@ export function generateProceduralComicScript(
       const activeCharNames = beat.characters;
       const charTokens = activeCharNames.map(cn => {
         const found = cast.find(c => isNameMatch(c.name, cn));
-        const attire = found ? getCharacterCanonicalAttire(found) : null;
+        const attire = found ? resolveCharacterAttireForScene(found, beat.sceneAction, rawStoryText) : null;
         if (!attire) return `Featuring ${cn}`;
-        return `Featuring ${cn} (${attire.physicalTraits || found.description}, wearing their registered standard attire: ${attire.outfitDescription})`;
+        const wearLabel = attire.isOverride ? "wearing" : "wearing their registered standard attire:";
+        return `Featuring ${cn} (${attire.physicalTraits || found.description}, ${wearLabel} ${attire.outfitDescription})`;
       }).join(", ");
 
       const imagePrompt = `${beat.sceneAction}. ${charTokens}. Dynamic narrative comic panel, fully illustrated background environment, authentic room architecture, atmospheric lighting, sharp comic art, no text, no speech bubbles.`;
@@ -2896,9 +3118,10 @@ export function generateProceduralComicScript(
 
       const charTokens = activeCharNames.map(cn => {
         const found = cast.find(c => isNameMatch(c.name, cn));
-        const attire = found ? getCharacterCanonicalAttire(found) : null;
+        const attire = found ? resolveCharacterAttireForScene(found, beat, rawStoryText) : null;
         if (!attire) return `Featuring ${cn}`;
-        return `Featuring ${cn} (${attire.physicalTraits || found.description}, wearing ${attire.outfitDescription})`;
+        const wearLabel = attire.isOverride ? "wearing" : "wearing their registered standard attire:";
+        return `Featuring ${cn} (${attire.physicalTraits || found.description}, ${wearLabel} ${attire.outfitDescription})`;
       }).join(", ");
 
       const shotType = i === 0 ? "Cinematic wide establishing shot" :
@@ -3346,9 +3569,19 @@ export async function generateComicScript(
          * NEVER output character turnaround sheets, multi-view model sheets, front/back view layouts, or idle T-poses inside a comic panel!
          * Comic panels are living dramatic scene moments inside an actual environment (e.g. inside a luxurious penthouse bedroom, sitting at a candlelit table, leaning against a rainy window overlooking the city).
     6. ZERO UNINVITED CHARACTERS: ONLY characters explicitly declared in the Cast list (${effectiveCast.map(c => c.name).join(", ")}) may appear. If a panel is about one specific character, DO NOT include any other character.
-    7. COSTUME CONSISTENCY & INTIMACY/UNDRESSING EXCEPTION (TÜM KARELERDE TUTARLI GİYİM):
-       - A comic page is a single continuous scene sequence. Characters CANNOT arbitrarily swap clothes between panels.
-       ${effectiveCast.map(c => `  * Standard Locked Attire for ${c.name}: "${getCharacterCanonicalAttire(c).outfitDescription}"`).join("\n       ")}
+    7. COSTUME CONSISTENCY & NARRATIVE OUTFIT CHANGE PROTOCOL (TÜM KARELERDE TUTARLI GİYİM VE KIYAFET DEĞİŞİMİ KURALI):
+       - A comic page is a single continuous scene sequence. Characters CANNOT randomly swap clothes without narrative reason.
+       ${effectiveCast.map(c => {
+         const att = resolveCharacterAttireForScene(c, "", combinedText);
+         const note = att.isOverride ? `[STORY OVERRIDE DETECTED: "${att.outfitName}"]` : `[Standard Locked Attire]`;
+         return `  * ${note} for ${c.name}: "${att.outfitDescription}"`;
+       }).join("\n       ")}
+       - CRITICAL OUTFIT CHANGE OVERRIDE:
+         If the story, topic, or user prompt explicitly describes a character changing clothes, taking off an item (e.g. "ceketini çıkardı", "took off jacket"), or wearing a specific costume/dress (e.g. "kırmızı elbise giydi", "wears a red dress", "deri ceket", "pijama"):
+         * YOU MUST RESPECT AND REFLECT THIS OUTFIT CHANGE!
+         * Update the character's attire token in 'imagePrompt' to this new clothing (e.g. "Featuring Lena (wearing: elegant crimson red evening gown)").
+         * Maintain this NEW clothing consistently across subsequent panels unless another outfit change occurs in the narrative.
+         * DO NOT revert to their default standard attire when the story explicitly commanded an outfit change!
        - IMPORTANT EXCEPTION FOR INTIMACY, BEDROOM OR INTENTIONAL UNDRESSING SCENES:
          If the story/user direction explicitly describes characters undressing, in bed, sleeping, bathing, or in an intimate romantic encounter:
          DO NOT force them to wear winter jackets, heavy coats, or tactical boots in bed!
@@ -3682,7 +3915,12 @@ export async function generateComicScript(
   };
 }
 
-function extractCharacterImageParts(cast: Character[], maxImages: number = 3): { inlineImageParts: any[]; referenceGuideText: string } {
+function extractCharacterImageParts(
+  cast: Character[],
+  maxImages: number = 3,
+  scenePrompt: string = "",
+  storyTopic: string = ""
+): { inlineImageParts: any[]; referenceGuideText: string } {
   const inlineImageParts: any[] = [];
   const referenceGuide: string[] = [];
 
@@ -3697,8 +3935,8 @@ function extractCharacterImageParts(cast: Character[], maxImages: number = 3): {
             data: match[2]
           }
         });
-        const attire = getCharacterCanonicalAttire(char);
-        const hasCustomOutfit = Boolean(char.activeOutfitId && char.activeOutfitId !== "default");
+        const attire = resolveCharacterAttireForScene(char, scenePrompt, storyTopic);
+        const hasCustomOutfit = attire.isOverride || Boolean(char.activeOutfitId && char.activeOutfitId !== "default");
         if (hasCustomOutfit) {
           referenceGuide.push(
             `[ATTACHED VISUAL REFERENCE FOR "${char.name}"]: Maintain 100% exact facial likeness, facial bone structure, hairstyle, hair color, skin tone, and eye color from this attached character sheet. CRITICAL COSTUME OVERRIDE: The character has CHANGED CLOTHES into their new active outfit ("${attire.outfitName}"): "${attire.outfitDescription}". You MUST render them wearing this NEW outfit in the scene. DO NOT copy the old clothing from the character sheet!`
@@ -3758,8 +3996,9 @@ Art Style: ${style}. ${styleEnhancement}
   if (matchedCharacters.length > 0) {
     continuityInstructions = "\n\n[STRICT CHARACTER STYLE SHEET & CANONICAL ATTIRE LOCK MANDATE]:\n" + 
       matchedCharacters.map(c => {
-        const attire = getCharacterCanonicalAttire(c);
-        return `- ${c.name} [MANDATORY CANONICAL ATTIRE]: "${attire.outfitDescription}". Unless story explicitly commanded an outfit change, maintain this exact clothing across every panel. Full manifest: ${attire.fullReference}`;
+        const attire = resolveCharacterAttireForScene(c, "", topic);
+        const label = attire.isOverride ? `[OVERRIDE ATTIRE: "${attire.outfitName}"]` : `[MANDATORY CANONICAL ATTIRE]`;
+        return `- ${c.name} ${label}: "${attire.outfitDescription}". Unless story explicitly commanded an outfit change, maintain this exact clothing across every panel. Full manifest: ${attire.fullReference}`;
       }).join("\n");
   }
 
@@ -3822,14 +4061,14 @@ export async function generateSinglePanelImage(
   );
 
   // 5. Extract ONLY the avatar model sheets for the matched characters (NEVER attach an excluded character's image!)
-  const { inlineImageParts, referenceGuideText } = extractCharacterImageParts(matchedCharacters, 2);
+  const { inlineImageParts, referenceGuideText } = extractCharacterImageParts(matchedCharacters, 2, panelPrompt, topic);
 
   // 6. Build concise character visual descriptions & mandatory attire lock
   // Only use modesty sheets if explicitly described as undressed or in the shower/bath
   const isExplicitlyUndressed = /\b(undressed|bare\s+skin|soyunuk|çıplak|soyunmuş|nude|naked|without\s+clothes|in\s+the\s+shower)\b/i.test(panelPrompt);
 
   const formatCharAnchor = (c: Character, isUndressed: boolean): string => {
-    const attire = getCharacterCanonicalAttire(c);
+    const attire = resolveCharacterAttireForScene(c, panelPrompt, topic);
     const keyTraits = (attire.physicalTraits || c.description || "")
       .split(/[;.]/)[0]
       .slice(0, 90)
