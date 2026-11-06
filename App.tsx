@@ -570,9 +570,31 @@ export default function App() {
       );
       // Ensure tone accurately reflects topic if user writes romance/love
       const effectiveConfig = { ...config };
-      const isRomanceTopic = /\b(aşk|aşık|sevgi|sevgili|romantik|romantizm|romance|flört|öpüş|öpücük|kiss|date|buluşma|tutku|tutkulu|sensual|intimate|evlilik|ilişki|sarılma|duygusal|kafe|gündelik|shojo)\b/i.test(`${effectiveConfig.topic} ${effectiveConfig.intro} ${direction}`);
+      const isRomanceTopic = /\b(aşk|aşık|sevgi|sevgili|romantik|romantizm|romance|flört|öpüş|öpücük|kiss|date|buluşma|tutku|tutkulu|sensual|intimate|evlilik|ilişki|sarılma|duygusal|shojo)\b/i.test(`${effectiveConfig.topic} ${effectiveConfig.intro} ${direction}`);
       if (isRomanceTopic && (!effectiveConfig.tone || effectiveConfig.tone.toLowerCase().includes("action"))) {
         effectiveConfig.tone = effectiveConfig.contentRating === "pg18" ? "Sensual Romance & Passion (PG-18)" : "Romance";
+      }
+
+      // Prioritize location detected directly from story topic, intro, and direction
+      const storyContext = `${effectiveConfig.topic || ""} ${effectiveConfig.intro || ""} ${direction || ""}`.trim();
+      const detectedNow = detectLocationsClientRegex(storyContext, effectiveConfig.locations || []);
+      if (detectedNow.length > 0) {
+        const topLoc = detectedNow[0];
+        const existingWithoutDup = (effectiveConfig.locations || []).filter(
+          l => l.name.toLowerCase() !== topLoc.name.toLowerCase()
+        );
+        const newLocItem: LocationItem = {
+          id: `loc_${generateId()}`,
+          name: topLoc.name,
+          type: topLoc.type,
+          description: topLoc.description,
+          visualManifest: topLoc.visualManifest,
+          tags: ["Hikaye Mekanı"],
+          createdAt: Date.now()
+        };
+        effectiveConfig.locations = [newLocItem, ...existingWithoutDup];
+        setConfig(prev => ({ ...prev, locations: [newLocItem, ...existingWithoutDup] }));
+        saveLocationToLibrary(newLocItem);
       }
 
       const scriptData = await generateComicScript(effectiveConfig, history, direction);

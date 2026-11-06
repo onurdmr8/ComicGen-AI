@@ -20,39 +20,7 @@ export interface LocationPatternDefinition {
 
 export const LOCATION_PATTERNS: LocationPatternDefinition[] = [
   {
-    regex: /\b(yatak(?:ta|ta\s+uzanırken|ta\s+sarılırken|a)?|oda(?:da|sında|ya)?|yatak\s+odas[ıi](?:nda)?|salon(?:da|unda)?|ev(?:de|inde|e)?|koltuk(?:ta)?|kanepe(?:de)?|daire(?:de|sinde)?|malik[âa]ne(?:de)?|villa(?:da)?|apartman(?:da)?|penthouse|rezidans|bedroom|living\s+room)\b/i,
-    name: "Lüks Rezidans & Yatak Odası",
-    type: "interior",
-    description: "Yumuşak saten çarşaflar, geniş king-size yatak, loş abajur aydınlatması ve gece şehir manzaralı lüks daire.",
-    visualManifest: "Luxurious modern penthouse suite and master bedroom at night, king-size bed with soft tumbled silk satin sheets, floor-to-ceiling panoramic glass windows overlooking glowing city skyline, warm amber ambient bedside lamps, designer plush carpet, rich interior atmosphere.",
-    reasonTr: "Hikaye metninde ev, yatak veya oda ortamı tespit edildi"
-  },
-  {
-    regex: /\b(mutfak(?:ta)?|yemek\s+masas[ıi](?:nda)?|masa(?:da)?|mum\s+[ıi][şs][ıi][ğg][ıi]|ak[şs]am\s+yeme[ğg]i|kadeh|şarap|romantic\s+dinner|dining\s+table)\b/i,
-    name: "Romantik Yemek Masası & Salon",
-    type: "interior",
-    description: "Mum ışıklarıyla aydınlatılmış şık yemek masası, şarap kadehleri ve sıcak romantik iç mekan.",
-    visualManifest: "Warm romantic candlelit dining room, sleek modern dining table set with crystal wine glasses and candles, soft dim amber illumination, luxury modern apartment background.",
-    reasonTr: "Hikaye metninde yemek masası veya mum ışıklı akşam yemeği tespit edildi"
-  },
-  {
-    regex: /\b(banyo(?:da)?|du[şs](?:ta)?|jakuzi(?:de)?|k[üu]vet(?:te)?|su\s+buhar[ıi]|bathroom|shower|jacuzzi)\b/i,
-    name: "Lüks Mermer Banyo & Jakuzi",
-    type: "interior",
-    description: "Geniş mermer lavabo, cam duşakabin, yükselen sıcak su buharı ve loş sıcak aplik ışıkları.",
-    visualManifest: "Opulent modern marble bathroom, spacious walk-in glass shower with rising steam, warm sconce lighting, luxury stone textures, atmospheric chiaroscuro reflections.",
-    reasonTr: "Hikaye metninde banyo/duş mekanı tespit edildi"
-  },
-  {
-    regex: /\b(otel(?:de|e)?|otel\s+odas[ıi](?:nda)?|otel\s+s[üu]iti(?:nde)?|l[üu]ks\s+otel|resepsiyon|hotel\s+room|luxury\s+hotel)\b/i,
-    name: "Lüks Otel Odası & Süit",
-    type: "interior",
-    description: "Geniş pencereli, şehir manzaralı lüks otel odası; king-size yatak, saten çarşaflar ve loş abajur aydınlatması.",
-    visualManifest: "Upscale modern luxury hotel bedroom with floor-to-ceiling panoramic windows overlooking night city lights, king-size bed with crisp duvet, designer ambient lamp lighting, plush carpet, rich walnut surfaces.",
-    reasonTr: "Hikaye metninde otel ortamı tespit edildi"
-  },
-  {
-    regex: /\b(vintage\s+kafe|kafe(?:de|sinde)?|kahve\s+d[üu]kkan[ıi]|kahve(?:de)?|bistro(?:da)?|restoran(?:da|ında)?|lokanta(?:da)?|pastane(?:de)?|coffee\s+shop|cozy\s+cafe)\b/i,
+    regex: /\b(vintage\s+kafe|kafe(?:de|sinde|ye)?|kahve\s+d[üu]kkan[ıi]|kahve(?:de)?|bistro(?:da)?|restoran(?:da|ında)?|lokanta(?:da)?|pastane(?:de)?|coffee\s+shop|cozy\s+cafe)\b/i,
     name: "Vintage Kafe & Restoran",
     type: "interior",
     description: "Ahşap masaları, buharlı kahve makineleri ve sarı Edison ampulleriyle nostaljik, samimi bir kafe ortamı.",
@@ -60,20 +28,12 @@ export const LOCATION_PATTERNS: LocationPatternDefinition[] = [
     reasonTr: "Hikaye metninde kafe/kahve/restoran mekanı tespit edildi"
   },
   {
-    regex: /\b(ara\s+sokak(?:ta)?|karanl[ıi]k\s+sokak|ya[ğg]murlu\s+cadde|ya[ğg]mur(?:da|\s+alt[ıi]nda)?|[şs]emsiye(?:\s+alt[ıi]nda)?|sokak(?:ta)?|cadde(?:de)?|kald[ıi]r[ıi]m(?:da)?|gece\s+soka[ğg][ıi]|rainy\s+street|dark\s+alley(?:way)?|neon\s+alley)\b/i,
+    regex: /\b(ara\s+sokak(?:ta)?|karanl[ıi]k\s+sokak|ya[ğg]murlu\s+cadde|ya[ğg]mur(?:da|\s+alt[ıi]nda)?|[şs]emsiye(?:\s+alt[ıi]nda)?|sokak(?:ta|a)?|cadde(?:de|ye)?|kald[ıi]r[ıi]m(?:da)?|gece\s+soka[ğg][ıi]|rainy\s+street|dark\s+alley(?:way)?|neon\s+alley)\b/i,
     name: "Karanlık Yağmurlu Sokak",
     type: "urban",
     description: "Islak parke taşları, sarı sokak lambaları ve neon tabelaların su birikintilerine vuran yansımalarıyla atmosferik şehir sokağı.",
     visualManifest: "Atmospheric cinematic city alleyway in the rain, wet cobblestone reflections, amber streetlamp glow, neon signs reflecting in puddles, steam rising from street grates, gritty noir aesthetic.",
     reasonTr: "Hikaye metninde sokak, cadde veya yağmurlu dış mekan tespit edildi"
-  },
-  {
-    regex: /\b(g[öo]kdelen\s+[çc]at[ıi]s[ıi]|teras(?:ta)?|[çc]at[ıi](?:da|s[ıi]nda)?|balkon(?:da)?|rooftop(?:\s+terrace)?|skyscraper\s+roof)\b/i,
-    name: "Gökdelen Çatısı & Teras",
-    type: "exterior",
-    description: "Şehrin parlayan ışıklarına tepeden bakan, rüzgarlı ve yüksek güvenlik korkuluklu gökdelen çatısı.",
-    visualManifest: "High-altitude skyscraper rooftop overlooking glowing sprawling metropolis at dusk, metal exhaust vents, wet perimeter parapet railing, wind-blown mist, cinematic wide urban depth.",
-    reasonTr: "Hikaye metninde çatı, teras veya balkon mekanı tespit edildi"
   },
   {
     regex: /\b(bar(?:da|[ıi]nda)?|gece\s+kul[üu]b[üu]|pub(?:da)?|meyhane(?:de)?|parti(?:de)?|dans\s+pisti|lounge|nightclub|jazz\s+bar)\b/i,
@@ -84,12 +44,12 @@ export const LOCATION_PATTERNS: LocationPatternDefinition[] = [
     reasonTr: "Hikaye metninde bar veya gece kulübü tespit edildi"
   },
   {
-    regex: /\b(araba\s+i[çc]i|ara[çc]\s+i[çc]i|otomobil(?:de)?|taksi(?:de)?|araba(?:da)?|limuzin(?:de)?|direksiyon|car\s+interior|moving\s+vehicle)\b/i,
-    name: "Lüks Araç İçi / Otomobil",
-    type: "vehicle",
-    description: "Deri koltuklar, parlayan dijital gösterge paneli ve camlardan akan şehir ışıklarıyla araç içi atmosferi.",
-    visualManifest: "Cinematic sports sedan interior at night, dark stitched leather seats, illuminated digital dashboard dials with cyan glow, rain streaks on windshield, passing streetlights casting moving orange flares.",
-    reasonTr: "Hikaye metninde araç veya araba içi tespit edildi"
+    regex: /\b(g[öo]kdelen\s+[çc]at[ıi]s[ıi]|teras(?:ta)?|[çc]at[ıi](?:da|s[ıi]nda)?|balkon(?:da)?|rooftop(?:\s+terrace)?|skyscraper\s+roof)\b/i,
+    name: "Gökdelen Çatısı & Teras",
+    type: "exterior",
+    description: "Şehrin parlayan ışıklarına tepeden bakan, rüzgarlı ve yüksek güvenlik korkuluklu gökdelen çatısı.",
+    visualManifest: "High-altitude skyscraper rooftop overlooking glowing sprawling metropolis at dusk, metal exhaust vents, wet perimeter parapet railing, wind-blown mist, cinematic wide urban depth.",
+    reasonTr: "Hikaye metninde çatı, teras veya balkon mekanı tespit edildi"
   },
   {
     regex: /\b(sahil(?:de)?|kumsal(?:da)?|plaj(?:da)?|deniz\s+k[ıi]y[ıi]s[ıi]|deniz(?:de)?|g[öo]l\s+kenar[ıi]|orman(?:da)?|a[ğg]a[çc]l[ıi]k|beach|sea|shoreline|forest)\b/i,
@@ -98,6 +58,14 @@ export const LOCATION_PATTERNS: LocationPatternDefinition[] = [
     description: "Yoğun ağaçlar, puslu zemin veya dalgaların vurduğu kum taneleriyle doğal açık hava mekanı.",
     visualManifest: "Atmospheric natural landscape, tranquil shoreline with gentle dark water reflections, cool coastal breeze, distant city glow on the horizon.",
     reasonTr: "Hikaye metninde doğa veya sahil mekanı tespit edildi"
+  },
+  {
+    regex: /\b(araba\s+i[çc]i|ara[çc]\s+i[çc]i|otomobil(?:de)?|taksi(?:de)?|araba(?:da)?|limuzin(?:de)?|direksiyon|car\s+interior|moving\s+vehicle)\b/i,
+    name: "Lüks Araç İçi / Otomobil",
+    type: "vehicle",
+    description: "Deri koltuklar, parlayan dijital gösterge paneli ve camlardan akan şehir ışıklarıyla araç içi atmosferi.",
+    visualManifest: "Cinematic sports sedan interior at night, dark stitched leather seats, illuminated digital dashboard dials with cyan glow, rain streaks on windshield, passing streetlights casting moving orange flares.",
+    reasonTr: "Hikaye metninde araç veya araba içi tespit edildi"
   },
   {
     regex: /\b(ofis(?:te|inde)?|b[üu]ro(?:da)?|toplant[ıi]\s+odas[ıi]|plaza(?:da)?|holding(?:de)?|patron\s+odas[ıi]|g[öo]kdelen\s+ofisi|office|boardroom)\b/i,
@@ -122,6 +90,38 @@ export const LOCATION_PATTERNS: LocationPatternDefinition[] = [
     description: "Steril beyaz duvarlar, floresan ışıklar ve medikal ekipmanlarla donatılmış hastane ortamı.",
     visualManifest: "Sterile modern hospital room and corridor, cool fluorescent overhead panel lights, stainless steel IV stands, heart monitor screens with faint green glow, glossy linoleum floors.",
     reasonTr: "Hikaye metninde hastane ortamı tespit edildi"
+  },
+  {
+    regex: /\b(otel(?:de|e)?|otel\s+odas[ıi](?:nda)?|otel\s+s[üu]iti(?:nde)?|l[üu]ks\s+otel|resepsiyon|hotel\s+room|luxury\s+hotel)\b/i,
+    name: "Lüks Otel Odası & Süit",
+    type: "interior",
+    description: "Geniş pencereli, şehir manzaralı lüks otel odası; king-size yatak, saten çarşaflar ve loş abajur aydınlatması.",
+    visualManifest: "Upscale modern luxury hotel bedroom with floor-to-ceiling panoramic windows overlooking night city lights, king-size bed with crisp duvet, designer ambient lamp lighting, plush carpet, rich walnut surfaces.",
+    reasonTr: "Hikaye metninde otel ortamı tespit edildi"
+  },
+  {
+    regex: /\b(banyo(?:da)?|du[şs](?:ta)?|jakuzi(?:de)?|k[üu]vet(?:te)?|su\s+buhar[ıi]|bathroom|shower|jacuzzi)\b/i,
+    name: "Lüks Mermer Banyo & Jakuzi",
+    type: "interior",
+    description: "Geniş mermer lavabo, cam duşakabin, yükselen sıcak su buharı ve loş sıcak aplik ışıkları.",
+    visualManifest: "Opulent modern marble bathroom, spacious walk-in glass shower with rising steam, warm sconce lighting, luxury stone textures, atmospheric chiaroscuro reflections.",
+    reasonTr: "Hikaye metninde banyo/duş mekanı tespit edildi"
+  },
+  {
+    regex: /\b(mutfak(?:ta)?|yemek\s+masas[ıi](?:nda)?|mum\s+[ıi][şs][ıi][ğg][ıi]|ak[şs]am\s+yeme[ğg]i|kadeh|şarap\s+kadehi|romantic\s+dinner|dining\s+table)\b/i,
+    name: "Romantik Yemek Masası & Salon",
+    type: "interior",
+    description: "Mum ışıklarıyla aydınlatılmış şık yemek masası, şarap kadehleri ve sıcak romantik iç mekan.",
+    visualManifest: "Warm romantic candlelit dining room, sleek modern dining table set with crystal wine glasses and candles, soft dim amber illumination, luxury modern apartment background.",
+    reasonTr: "Hikaye metninde yemek masası veya mum ışıklı akşam yemeği tespit edildi"
+  },
+  {
+    regex: /\b(yatak(?:ta|ta\s+uzanırken|ta\s+sarılırken|a)?|yatak\s+odas[ıi](?:nda)?|çarşaf(?:lar)?|koltuk(?:ta\s+sarıl)?|kanepe(?:de\s+uzan)?|daire(?:de|sinde)?|malik[âa]ne(?:de)?|villa(?:da)?|apartman(?:da)?|penthouse|rezidans|bedroom|living\s+room|ev(?:de|inde|e)?)\b/i,
+    name: "Lüks Rezidans & Yatak Odası",
+    type: "interior",
+    description: "Yumuşak saten çarşaflar, geniş king-size yatak, loş abajur aydınlatması ve gece şehir manzaralı lüks daire.",
+    visualManifest: "Luxurious modern penthouse suite and master bedroom at night, king-size bed with soft tumbled silk satin sheets, floor-to-ceiling panoramic glass windows overlooking glowing city skyline, warm amber ambient bedside lamps, designer plush carpet, rich interior atmosphere.",
+    reasonTr: "Hikaye metninde ev, yatak veya oda ortamı tespit edildi"
   }
 ];
 

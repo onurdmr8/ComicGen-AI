@@ -2,6 +2,7 @@ import express, { Request, Response } from "express";
 import path from "path";
 import fs from "fs";
 import * as geminiBackend from "./server/geminiBackend";
+export * from "./server/geminiBackend";
 
 // Automatically load .env file if present
 const envPath = path.join(process.cwd(), ".env");
