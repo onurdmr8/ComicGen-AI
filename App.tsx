@@ -5,6 +5,7 @@ import { NarrativeMemoryModal } from "./components/NarrativeMemoryModal";
 import { NarrativeFlowModal } from "./components/NarrativeFlowModal";
 import { FullPdfExportModal } from "./components/FullPdfExportModal";
 import { SavedStoriesModal } from "./components/SavedStoriesModal";
+import { StoryTemplatesModal } from "./components/StoryTemplatesModal";
 import { ApiKeyModal } from "./components/ApiKeyModal";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -133,6 +134,7 @@ export default function App() {
   const [isFlowModalOpen, setIsFlowModalOpen] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isStoriesModalOpen, setIsStoriesModalOpen] = useState(false);
+  const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [hasUserApiKey, setHasUserApiKey] = useState<boolean>(() => !!getUserApiKey());
   const [hasTogetherKey, setHasTogetherKey] = useState<boolean>(() => !!getTogetherApiKey());
@@ -499,6 +501,56 @@ export default function App() {
       imageProvider: prev.imageProvider || "pollinations_flux"
     }));
     setIsSidebarOpen(true);
+  };
+
+  const handleApplyTemplate = async (templateData: {
+    topic: string;
+    intro: string;
+    tone: string;
+    style: string;
+    cast: Character[];
+  }) => {
+    const newConfig: ComicConfig = {
+      ...config,
+      topic: templateData.topic,
+      intro: templateData.intro,
+      tone: templateData.tone || config.tone,
+      style: templateData.style || config.style,
+      cast: templateData.cast
+    };
+    setConfig(newConfig);
+    setIsSidebarOpen(true);
+    showStoryToast(`"${templateData.topic}" şablonu başarıyla hikayeye aktarıldı! ✨`);
+
+    // Arka planda karakterlerin avatarlarını ve manifestlerini hazırla
+    for (const char of templateData.cast) {
+      if (!char.avatarUrl) {
+        try {
+          const visualManifest = await generateVisualManifest(char.name, char.description, newConfig.style);
+          const avatarUrl = await generateCharacterAvatar(
+            char.name,
+            visualManifest,
+            newConfig.style,
+            Boolean(newConfig.usePaidApi),
+            newConfig.imageProvider || "pollinations_flux",
+            newConfig.pollinationsModel
+          );
+          const updated: Character = {
+            ...char,
+            visualManifest,
+            avatarUrl,
+            style: newConfig.style,
+            createdAt: Date.now()
+          };
+          setConfig(prev => ({
+            ...prev,
+            cast: prev.cast.map(c => c.id === char.id ? updated : c)
+          }));
+        } catch (e) {
+          console.warn("Avatar oluşturma atlandı:", e);
+        }
+      }
+    }
   };
 
   const handleStartGeneration = async () => {
@@ -1528,6 +1580,7 @@ export default function App() {
         onOpenFlowModal={() => setIsFlowModalOpen(true)}
         onOpenPdfModal={() => setIsPdfModalOpen(true)}
         onOpenStoriesModal={() => setIsStoriesModalOpen(true)}
+        onOpenTemplatesModal={() => setIsTemplatesModalOpen(true)}
         onOpenApiKeyModal={() => {
           setApiKeyModalTab(
             config.imageProvider === "fal_flux" ? "fal" :
@@ -2549,6 +2602,13 @@ export default function App() {
           currentPages={pages}
           onLoadStory={handleLoadStory}
           onNewStory={handleStartNewStory}
+        />
+
+        {/* Şablon Hikaye Kütüphanesi & Fikir Zarı Modalı */}
+        <StoryTemplatesModal
+          isOpen={isTemplatesModalOpen}
+          onClose={() => setIsTemplatesModalOpen(false)}
+          onApplyTemplate={handleApplyTemplate}
         />
 
         {/* PWA / APK Kurulum ve İndirme Rehberi Modalı */}

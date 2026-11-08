@@ -4,7 +4,7 @@ import {
   Palette, Ghost, Info, Swords, Menu, Info as InfoIcon, RotateCcw,
   CreditCard, ShieldCheck, Check, Library, BookmarkPlus, BookmarkCheck, Search, Users, ExternalLink,
   MapPin, Compass, BookOpen, Brain, ShieldAlert, Sun, Lock, Layers, GitBranch, FileText, Shirt, Flame, Eye, EyeOff, Camera, Heart,
-  KeyRound, UploadCloud, Image as ImageIcon
+  KeyRound, UploadCloud, Image as ImageIcon, Dices
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Character, CharacterOutfit, ComicConfig, GeneratorStatus, LocationItem, NarrativeContinuityMemory, POLLINATIONS_MODELS, COMIC_ART_STYLES } from "../types";
@@ -49,6 +49,7 @@ interface SidebarProps {
   onOpenFlowModal?: () => void;
   onOpenPdfModal?: () => void;
   onOpenStoriesModal?: () => void;
+  onOpenTemplatesModal?: () => void;
   savedStoriesCount?: number;
   onOpenApiKeyModal?: () => void;
 }
@@ -71,6 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenFlowModal,
   onOpenPdfModal,
   onOpenStoriesModal,
+  onOpenTemplatesModal,
   savedStoriesCount = 0,
   onOpenApiKeyModal,
 }) => {
@@ -584,7 +586,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 <button
                                     type="button"
                                     onClick={onOpenStoriesModal}
-                                    className="py-2.5 px-2 bg-yellow-400 hover:bg-yellow-300 text-black border-2 border-black shadow-comic hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-display uppercase tracking-wider text-[11px] font-bold flex items-center justify-center gap-1.5"
+                                    className="py-2.5 px-2 bg-yellow-400 hover:bg-yellow-300 text-black border-2 border-black shadow-comic hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-display uppercase tracking-wider text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer"
                                     title="Tüm kayıtlı hikayelerinizi görüntüleyin, yeni hikaye başlatın veya eski hikayeleri açın"
                                 >
                                     <BookOpen size={14} />
@@ -597,20 +599,55 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 </button>
 
                                 <button
-                                    onClick={onAutoFill}
-                                    disabled={isAutoFilling || isLoading}
-                                    className="py-2.5 px-2 bg-indigo-600 hover:bg-indigo-500 text-white border-2 border-black shadow-comic hover:translate-x-0.5 hover:translate-y-0.5 transition-all disabled:opacity-50 font-display uppercase tracking-wider text-[11px] flex items-center justify-center gap-1.5"
+                                    type="button"
+                                    onClick={onOpenTemplatesModal}
+                                    className="py-2.5 px-2 bg-indigo-600 hover:bg-indigo-500 text-white border-2 border-black shadow-comic hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-display uppercase tracking-wider text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                                    title="Hazır kurgu şablonları arasından seçin veya eğlenceli hikaye zarı atın"
                                 >
-                                    {isAutoFilling ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                                    <span>Rastgele</span>
+                                    <Dices size={15} />
+                                    <span>Şablonlar & Zar 🎲</span>
                                 </button>
                             </div>
 
                             <section className="space-y-6">
                                 <div className="space-y-2">
-                                    <label className="text-xs font-display uppercase text-yellow-400 flex items-center gap-2">
-                                        <Play size={12} /> Ana Konu
-                                    </label>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-display uppercase text-yellow-400 flex items-center gap-2">
+                                            <Play size={12} /> Ana Konu
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={onOpenTemplatesModal}
+                                            className="text-[10px] font-mono text-indigo-300 hover:text-indigo-200 flex items-center gap-1 cursor-pointer"
+                                        >
+                                            <Sparkles size={11} />
+                                            <span>Fikir Al 🎲</span>
+                                        </button>
+                                    </div>
+                                    
+                                    {/* Hızlı Trend Fikir Çipleri */}
+                                    <div className="flex flex-wrap gap-1 pb-1">
+                                        {[
+                                            { label: "🚀 Siber Gece", topic: "Siber Gece: Kod Adı Neon", tone: "Sci-Fi" },
+                                            { label: "🌧️ Yağmurda Aşk", topic: "Yağmurda Yarım Kalan Şemsiye", tone: "Romance" },
+                                            { label: "🕵️ Sisli Boğaz", topic: "Boğazın Sisli Sırrı: Mühürlü Harita", tone: "Mystery" },
+                                            { label: "⚡ Yıldırım Kahramanı", topic: "Yıldırım Muhafızı: Gökdelen Kuşatması", tone: "Action" },
+                                            { label: "☕ Kafe Kaosu", topic: "İkinci Şans Kafe: Ters Giden Siparişler", tone: "Comedy" }
+                                        ].map((chip, idx) => (
+                                            <button
+                                                key={`quick-topic-${idx}`}
+                                                type="button"
+                                                onClick={() => setConfig(prev => ({
+                                                    ...prev,
+                                                    topic: chip.topic,
+                                                    tone: chip.tone
+                                                }))}
+                                                className="px-2 py-0.5 text-[10px] font-mono bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 hover:border-yellow-400/70 transition-all cursor-pointer"
+                                            >
+                                                {chip.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                      <input
                                         type="text"
                                         className="w-full bg-slate-900 border-2 border-black p-3 text-base sm:text-sm font-comic focus:border-yellow-400 outline-none shadow-inner"
