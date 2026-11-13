@@ -2336,6 +2336,7 @@ function splitStoryInto4Beats(userDirection: string): string[] {
 interface EnrichedBeat {
   sceneAction: string;
   dialogue: string;
+  onomatopoeia?: string;
   characters: string[];
   cameraAngle: string;
 }
@@ -2345,7 +2346,9 @@ function buildEnrichedBeatsForShortPrompt(
   cast: Character[],
   locName: string,
   isRomance: boolean,
-  isMature: boolean
+  isMature: boolean,
+  history: string[] = [],
+  hasNewDirection: boolean = false
 ): EnrichedBeat[] {
   let c1 = cast[0]?.name || "Kaya";
   let c2 = cast[1]?.name || (cast.length > 1 ? cast[1].name : "Leyla");
@@ -2363,35 +2366,286 @@ function buildEnrichedBeatsForShortPrompt(
     if (other) c2 = other.name;
   }
 
+  // MULTI-PAGE CONTINUITY (2. Sayfa ve Sonrası için Otomatik Hikaye Akışı):
+  const pageNumber = Math.floor(history.length / 4) + 1;
+  if (pageNumber >= 2 && !hasNewDirection) {
+    const lastPageText = history.slice(-4).join(" ").toLowerCase();
+    const wasBarOrDance = /bar|kulüp|club|dans|dance|pist|kokteyl|kadeh|mahogany/i.test(lastPageText);
+    const wasCafe = /kafe|kahve|cafe|espresso|latte|window/i.test(lastPageText);
+    const wasFight = /kavga|dövüş|fight|punch|yumruk|clash/i.test(lastPageText);
+    const wasStreetOrCar = /sokak|cadde|yağmur|street|araba|car|beach|sahil/i.test(lastPageText);
+
+    if (pageNumber === 2) {
+      if (wasBarOrDance) {
+        return [
+          {
+            sceneAction: `Atmospheric wide shot outside the glowing nightclub entrance at night. ${c1} and ${c2} step out together from the neon doorway into the crisp midnight air, city lights shimmering on the damp pavement.`,
+            dialogue: `${c1}: İçerisi çok sıcaktı, bu serin gece havası iyi geldi.`,
+            onomatopoeia: "FIIIS...",
+            characters: [c1, c2],
+            cameraAngle: "standard"
+          },
+          {
+            sceneAction: `Warm medium two-shot walking closely side-by-side beneath amber streetlamps. ${c2} playfully drapes an arm around ${c1}'s shoulders with an affectionate smile as they stroll down the quiet avenue.`,
+            dialogue: `${c2}: Bu geceyi burada bitirmek istemiyorum... Benimle biraz daha kalır mısın?`,
+            onomatopoeia: "TAK TAK...",
+            characters: [c1, c2],
+            cameraAngle: "over_shoulder"
+          },
+          {
+            sceneAction: `Intimate close-up two-shot stopping under a softly glowing streetlamp as light mist begins to fall. ${c1} looks up into ${c2}'s eyes, hands gently clasping together between them.`,
+            dialogue: `${c1}: Senin yanında zaman duruyor gibi... Nereye gidersek gidelim fark etmez.`,
+            onomatopoeia: "ŞIRRR...",
+            characters: [c1, c2],
+            cameraAngle: "close_up_eyes"
+          },
+          {
+            sceneAction: `Passionate cinematic closing shot in the rain-kissed city night. ${c2} leans in tenderly, cupping ${c1}'s cheek for a warm, lingering kiss as distant neon cityscapes blur into bokeh.`,
+            dialogue: `${c2}: O zaman bu gece bizim hikayemizin ilk sayfası olsun.`,
+            onomatopoeia: "",
+            characters: [c1, c2],
+            cameraAngle: "romantic_dream"
+          }
+        ];
+      }
+
+      if (wasCafe) {
+        return [
+          {
+            sceneAction: `Cinematic wide shot stepping out of the vintage cafe onto the golden-hour city boulevard. ${c1} and ${c2} walk side-by-side past warm shop windows, coffee warmth lingering.`,
+            dialogue: `${c1}: O kadar güzel konuştuk ki saatin nasıl geçtiğini hiç anlamadım.`,
+            onomatopoeia: "ÇIN!",
+            characters: [c1, c2],
+            cameraAngle: "standard"
+          },
+          {
+            sceneAction: `Dynamic medium two-shot approaching a scenic riverside park overlook. ${c2} gently brushes fingers against ${c1}'s hand before interlacing them firmly.`,
+            dialogue: `${c2}: Uzun zamandır kimsenin yanında kendimi bu kadar huzurlu hissetmemiştim.`,
+            onomatopoeia: "",
+            characters: [c1, c2],
+            cameraAngle: "over_shoulder"
+          },
+          {
+            sceneAction: `Expressive close-up reaction shot framed by autumn/twilight leaves. ${c1} stops and turns toward ${c2} with soft blushing cheeks and tender, honest eyes.`,
+            dialogue: `${c1}: Sanırım aynı şeyi hissediyoruz... Bunu saklamak artık çok zor.`,
+            onomatopoeia: "",
+            characters: [c1, c2],
+            cameraAngle: "close_up_eyes"
+          },
+          {
+            sceneAction: `Warm sunset closing two-shot at the park balustrade overlooking the shimmering water. ${c1} leans softly against ${c2}'s shoulder as golden twilight wraps around them.`,
+            dialogue: `${c2}: Artık saklamamıza gerek yok. Bundan sonra hep yan yanayız.`,
+            onomatopoeia: "",
+            characters: [c1, c2],
+            cameraAngle: "romantic_dream"
+          }
+        ];
+      }
+
+      if (wasFight) {
+        return [
+          {
+            sceneAction: `Tense low-angle shot in a dimly lit rain-slicked concrete alleyway. ${c1} leans against the brick wall catching their breath, keeping sharp watch toward the shadowy exit.`,
+            dialogue: `${c1}: Bu iş burada bitmedi... Peşimizi kolay kolay bırakmayacaklar.`,
+            onomatopoeia: "TAK TAK...",
+            characters: [c1],
+            cameraAngle: "low_angle_hero"
+          },
+          {
+            sceneAction: `Dynamic over-the-shoulder two-shot. ${c2} emerges from the fog holding a crucial encrypted envelope or clue, eyes alert and determined.`,
+            dialogue: `${c2}: Haklısın, ama az önce asıl aradığımız kanıtı ele geçirdim!`,
+            onomatopoeia: "HAŞIRT!",
+            characters: [c1, c2],
+            cameraAngle: "over_shoulder"
+          },
+          {
+            sceneAction: `Dramatic close-up two-shot illuminated by flashing distant police/street red-blue strobes. ${c1} and ${c2} lock eyes with fierce tactical resolve.`,
+            dialogue: `${c1}: Harika! O zaman kaçma sırası artık onlarda.`,
+            onomatopoeia: "VİİİU!",
+            characters: [c1, c2],
+            cameraAngle: "close_up_eyes"
+          },
+          {
+            sceneAction: `Impactful dramatic cliffhanger silhouette walking briskly into the neon-lit mist together, coats billowing in the wind.`,
+            dialogue: `${c2}: Hazırsan büyük hesaplaşmaya gidelim!`,
+            onomatopoeia: "",
+            characters: [c1, c2],
+            cameraAngle: "dramatic_split"
+          }
+        ];
+      }
+
+      if (wasStreetOrCar) {
+        return [
+          {
+            sceneAction: `Warm interior medium shot unlocking the door to a cozy modern penthouse apartment at night. ${c1} steps inside first as warm amber lamp light spills across the hardwood floor.`,
+            dialogue: `${c1}: Dışarısı buz gibiydi... Nihayet sıcak bir yere girebildik.`,
+            onomatopoeia: "TIIK!",
+            characters: [c1, c2],
+            cameraAngle: "standard"
+          },
+          {
+            sceneAction: `Relaxed medium two-shot in the stylish living room. ${c2} pours two glasses of red wine beside the panoramic city-view window while ${c1} settles comfortably on the plush sofa.`,
+            dialogue: `${c2}: Buyur bakalım, bu geceki macera için küçük bir kutlama hak ettik.`,
+            onomatopoeia: "ŞIRR...",
+            characters: [c1, c2],
+            cameraAngle: "over_shoulder"
+          },
+          {
+            sceneAction: `Intimate close-up two-shot on the soft couch under warm candlelight. ${c1} and ${c2} sit close, knees touching, sharing a quiet, magnetic gaze.`,
+            dialogue: `${c1}: Bütün şehrin gürültüsü dışarıda kaldı... Burada sadece biz varız.`,
+            onomatopoeia: "",
+            characters: [c1, c2],
+            cameraAngle: "close_up_eyes"
+          },
+          {
+            sceneAction: `Romantic cinematic closing shot silhouetted against the floor-to-ceiling city lights window. ${c2} pulls ${c1} into a warm, tender embrace.`,
+            dialogue: `${c2}: Bu gece hiç bitmesin istiyorum...`,
+            onomatopoeia: "",
+            characters: [c1, c2],
+            cameraAngle: "romantic_dream"
+          }
+        ];
+      }
+    }
+
+    // Page 3+ / General Multi-Page Continuation (Balcony Sunrise / Deep Bond or Dramatic Twist):
+    return [
+      {
+        sceneAction: `Cinematic wide shot on a luxury apartment balcony overlooking the glowing city skyline at dawn. ${c1} leans against the glass railing with a warm mug, watching the first golden rays touch the clouds.`,
+        dialogue: `${c1}: Bunca şeyden sonra sabahı seninle karşılamak rüya gibi geliyor...`,
+        onomatopoeia: "FIIIS...",
+        characters: [c1],
+        cameraAngle: "standard"
+      },
+      {
+        sceneAction: `Tender medium two-shot on the balcony. ${c2} steps quietly behind ${c1}, wrapping both arms warmly around ${c1}'s waist and resting chin gently on their shoulder.`,
+        dialogue: `${c2}: Bu daha başlangıç... Bundan sonraki her sabahımız böyle olacak.`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "over_shoulder"
+      },
+      {
+        sceneAction: `Intimate close-up reaction shot bathed in warm golden morning light. ${c1} turns back with glowing eyes and a radiant smile, gently touching ${c2}'s cheek.`,
+        dialogue: `${c1}: Söz mü? Hiçbir fırtına bizi ayıramayacak mı?`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "close_up_eyes"
+      },
+      {
+        sceneAction: `Panoramic romantic climax shot framed by the golden sunrise horizon. ${c1} and ${c2} share a deep, heartfelt kiss on the terrace as the city awakens below.`,
+        dialogue: `${c2}: Söz. Senin olduğun her yer benim evim artık.`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "romantic_dream"
+      }
+    ];
+  }
+
+  const isKiss = /öpüş|öptü|öpücük|dudak|sarıl|sarıldı|kiss|embrace|itiraf/i.test(`${lowerPrompt}`);
   const isDance = /dans|dance|pist|disko/i.test(`${lowerPrompt} ${lowerLoc}`);
   const isFight = /kavga|dövüş|saldırı|baskın|çatışma|fight|combat/i.test(`${lowerPrompt}`);
+  const isCar = /araba|araç|otomobil|taksi|direksiyon|otoyol|yolculuk|sürüş|car|drive/i.test(`${lowerPrompt} ${lowerLoc}`);
+  const isBeach = /sahil|kumsal|plaj|deniz|gün\s*batımı|dalga|beach|sunset/i.test(`${lowerPrompt} ${lowerLoc}`);
+  const isHome = /ev|daire|salon|yatak|koltuk|kanepe|film|şarap|akşam\s*yemeği|mum\s*ışığı|penthouse|rezidans|otel/i.test(`${lowerPrompt} ${lowerLoc}`);
   const isBar = /bar|gece\s+kulübü|pub|içki|kokteyl|tabure|kadeh/i.test(`${lowerPrompt} ${lowerLoc}`);
   const isCafe = /kafe|kahve|bistro|pastane|restoran|çay|lokanta/i.test(`${lowerPrompt} ${lowerLoc}`);
   const isStreet = /sokak|cadde|yağmur|yürüyüş|gece\s+sokağı/i.test(`${lowerPrompt} ${lowerLoc}`);
+
+  // Combined Scenario: Car drive -> Beach sunset
+  if (isCar && isBeach) {
+    return [
+      {
+        sceneAction: `Dynamic interior car shot driving along a scenic coastal highway at golden hour. ${c1} at the wheel and ${c2} smiling beside them, warm sunset light flooding through the windshield.`,
+        dialogue: `${c1}: Camı aç biraz, deniz kokusu ta buraya kadar gelmeye başladı!`,
+        onomatopoeia: "VROOOM!",
+        characters: [c1, c2],
+        cameraAngle: "standard"
+      },
+      {
+        sceneAction: `Medium shot stepping out of the parked car near a sandy seaside cliff. ${c2} walks around and holds out a hand to ${c1} as coastal breeze sweeps across them.`,
+        dialogue: `${c2}: İşte burası... Kimsenin olmadığı sadece bize ait bir kumsal.`,
+        onomatopoeia: "TAK!",
+        characters: [c1, c2],
+        cameraAngle: "over_shoulder"
+      },
+      {
+        sceneAction: `Warm full-body two-shot walking barefoot along the shimmering wet shoreline. Gentle ocean waves lap around their ankles under blazing orange and pink sunset skies.`,
+        dialogue: `${c1}: İyi ki şehirden kaçıp buraya gelmişiz, her şey masal gibi.`,
+        onomatopoeia: "ŞARRR...",
+        characters: [c1, c2],
+        cameraAngle: "standard"
+      },
+      {
+        sceneAction: `Cinematic romantic silhouette at the water's edge against the glowing sunset horizon. ${c1} and ${c2} embrace tightly, gazing into each other's eyes.`,
+        dialogue: `${c2}: Seninle dünyanın öbür ucuna bile tereddüt etmeden sürerim.`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "romantic_dream"
+      }
+    ];
+  }
+
+  if (isKiss) {
+    return [
+      {
+        sceneAction: `Intimate medium two-shot inside ${locName}. ${c1} and ${c2} stand inches apart, warm atmospheric lighting tracing their profiles as unspoken tension fills the air.`,
+        dialogue: `${c1}: Kalbim o kadar hızlı atıyor ki... Sanki kelimeler boğazımda düğümlendi.`,
+        onomatopoeia: "GÜM... GÜM...",
+        characters: [c1, c2],
+        cameraAngle: "standard"
+      },
+      {
+        sceneAction: `Expressive close-up focusing on hands and eyes. ${c2} gently lifts a hand to tuck a strand of hair behind ${c1}'s ear, fingers lingering tenderly along the jawline.`,
+        dialogue: `${c2}: Konuşmana gerek yok... Gözlerin her şeyi zaten anlatıyor.`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "over_shoulder"
+      },
+      {
+        sceneAction: `Passionate cinematic close-up two-shot bathed in warm rim-lighting. ${c1} and ${c2} close the final distance, sharing a deep, breathless kiss with eyes softly closed.`,
+        dialogue: `${c1}: (Fısıltıyla) Seni beklediğim her saniyeye değdi...`,
+        onomatopoeia: "MMH...",
+        characters: [c1, c2],
+        cameraAngle: "close_up_eyes"
+      },
+      {
+        sceneAction: `Tender romantic aftermath shot resting forehead-to-forehead in close embrace, warm soft smiles and glistening eyes against blurred ambient lights.`,
+        dialogue: `${c2}: Bir daha bu elleri asla bırakmaya niyetim yok.`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "romantic_dream"
+      }
+    ];
+  }
 
   if (isDance) {
     return [
       {
         sceneAction: `Establishing medium shot inside the vibrant neon-lit bar and lounge. ${c1} is sitting gracefully at the sleek illuminated mahogany counter with a cocktail, soaking in the pulsing music and energetic club ambiance.`,
         dialogue: `${c1}: Bu mekanın ritmi ve atmosferi bu gece insanı yerinde durdurmuyor...`,
+        onomatopoeia: "",
         characters: [c1],
         cameraAngle: "standard"
       },
       {
         sceneAction: `Dynamic medium two-shot at the counter. ${c2} approaches with a confident charismatic smile, leaning casually against the bar and extending an inviting hand toward ${c1} to join the dance floor.`,
         dialogue: `${c2}: Tek başına oturup bu harika parçayı kaçırmana izin veremem. Benimle dans eder misin?`,
+        onomatopoeia: "",
         characters: [c1, c2],
         cameraAngle: "over_shoulder"
       },
       {
         sceneAction: `Dynamic full-body two-shot on the crowded dance floor under pulsating magenta, cyan, and gold strobe lights. ${c1} and ${c2} step into the rhythm together, hands clasped and smiling warmly as they move to the upbeat beat.`,
         dialogue: `${c1}: Pek dans etmem derdim ama bu teklifi geri çevirmek imkansız göründü!`,
+        onomatopoeia: "BASS! GÜM!",
         characters: [c1, c2],
         cameraAngle: "standard"
       },
       {
         sceneAction: `Intimate cinematic close two-shot slow dancing under soft purple club rim lighting. ${c2}'s hand gently rests on ${c1}'s waist, ${c1}'s arm drapes over ${c2}'s shoulder, bodies swaying close with intense romantic eye contact as the room blurs into neon bokeh.`,
         dialogue: `${c2}: Gördün mü? Bütün o kalabalık silindi, sanki bu pistte sadece ikimiz varız.`,
+        onomatopoeia: "",
         characters: [c1, c2],
         cameraAngle: "romantic_dream"
       }
@@ -2403,26 +2657,129 @@ function buildEnrichedBeatsForShortPrompt(
       {
         sceneAction: `Tense wide establishing confrontation shot inside ${locName}. ${c1} stands in a defensive combat stance, fists clenched with intense narrowed eyes staring down ${c2}.`,
         dialogue: `${c1}: Buraya kadar! Bu işi burada ve şimdi bitireceğiz.`,
+        onomatopoeia: "",
         characters: [c1, c2],
         cameraAngle: "low_angle_hero"
       },
       {
         sceneAction: `Dynamic action medium shot. ${c2} lunges forward aggressively, throwing a powerful direct punch while ${c1} raises an arm to deflect the impact.`,
         dialogue: `${c2}: Çok konuştun, bakalım yumrukların da lafların kadar sert mi!`,
+        onomatopoeia: "VUUUŞ!",
         characters: [c1, c2],
         cameraAngle: "dutch_angle"
       },
       {
         sceneAction: `High-impact close-up action clash. Gripping each other by the collars with strained muscles and fierce gritted teeth, dynamic motion blur framing their struggle.`,
         dialogue: `${c1}: Kolay pes edeceğimi sandıysan fena halde yanılıyorsun!`,
+        onomatopoeia: "KRAAK!",
         characters: [c1, c2],
         cameraAngle: "close_up_eyes"
       },
       {
         sceneAction: `Atmospheric dramatic aftermath two-shot. Both characters breathing heavily, standing apart with bruised knuckles and lingering defiance as dust and shadows settle around them.`,
         dialogue: `${c2}: Bu hesap henüz kapanmadı...`,
+        onomatopoeia: "",
         characters: [c1, c2],
         cameraAngle: "dramatic_split"
+      }
+    ];
+  }
+
+  if (isCar) {
+    return [
+      {
+        sceneAction: `Cinematic wide interior shot inside a sleek sports car at night. ${c1} holds the steering wheel while neon streetlamps sweep across the dashboard and dark leather seats.`,
+        dialogue: `${c1}: Gece yarısı boş yollarda sürmenin verdiği özgürlük hiçbir şeyde yok...`,
+        onomatopoeia: "VROOOM!",
+        characters: [c1, c2],
+        cameraAngle: "standard"
+      },
+      {
+        sceneAction: `Over-the-shoulder two-shot from the rear cabin. ${c2} turns from the passenger seat with an intriguing smile, adjusting the car radio while glancing warmly at ${c1}.`,
+        dialogue: `${c2}: Bu şarkıyı açarsam yolculuk iki kat daha güzel olacak, hazır mısın?`,
+        onomatopoeia: "KLİK!",
+        characters: [c1, c2],
+        cameraAngle: "over_shoulder"
+      },
+      {
+        sceneAction: `Intimate close-up inside the parked car overlooking shimmering city lights from a hilltop viewpoint. Engine off, ${c1} rests a hand tenderly over ${c2}'s hand on the center console.`,
+        dialogue: `${c1}: Manzaradan çok senin yüzüne bakasım geliyor şu an...`,
+        onomatopoeia: "TIIK...",
+        characters: [c1, c2],
+        cameraAngle: "close_up_eyes"
+      },
+      {
+        sceneAction: `Warm romantic closing frame through the rain-speckled car window. ${c1} and ${c2} lean closer together in the cozy dim dashboard glow.`,
+        dialogue: `${c2}: Hiç eve dönmesek de sabaha kadar burada kalsak olmaz mı?`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "romantic_dream"
+      }
+    ];
+  }
+
+  if (isBeach) {
+    return [
+      {
+        sceneAction: `Atmospheric wide establishing shot along a golden sunset beach. ${c1} walks barefoot along the water's edge, hair blowing softly in the salty coastal breeze.`,
+        dialogue: `${c1}: Dalgaların sesi insanın içindeki bütün fırtınayı susturuyor...`,
+        onomatopoeia: "ŞARRR...",
+        characters: [c1],
+        cameraAngle: "standard"
+      },
+      {
+        sceneAction: `Warm medium two-shot on the sandy shore. ${c2} catches up cheerfully, nudging ${c1}'s shoulder with a playful smile as warm orange sunbeams glint on the ocean.`,
+        dialogue: `${c2}: Bensiz gün batımını izlemeye mi geldin yoksa?`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "over_shoulder"
+      },
+      {
+        sceneAction: `Intimate close-up two-shot framed by golden sunset lens flare. ${c1} and ${c2} stop face-to-face, laughing warmly as waves gently brush their feet.`,
+        dialogue: `${c1}: Aslında tam da senin gelmeni bekliyordum, eksik kalırdı sensiz.`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "close_up_eyes"
+      },
+      {
+        sceneAction: `Romantic twilight silhouette by the glowing sea horizon. ${c2} wraps an arm securely around ${c1}'s waist, gazing out at the deep purple dusk together.`,
+        dialogue: `${c2}: Bundan sonra her gün batımında yanındayım.`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "romantic_dream"
+      }
+    ];
+  }
+
+  if (isHome) {
+    return [
+      {
+        sceneAction: `Warm establishing wide shot inside ${locName}. Soft candlelight and ambient lamps illuminate the cozy room as ${c1} pours two glasses of wine on the wooden table.`,
+        dialogue: `${c1}: Dışarıdaki bütün gürültüden uzakta, nihayet baş başa kalabildik...`,
+        onomatopoeia: "ŞIRR...",
+        characters: [c1],
+        cameraAngle: "standard"
+      },
+      {
+        sceneAction: `Relaxed medium two-shot on the plush sofa. ${c2} sits closely beside ${c1}, kicking off tension and leaning playfully against ${c1}'s shoulder with a warm smile.`,
+        dialogue: `${c2}: Bu atmosfer ve ışık... Sanki bütün akşamı bunun için planlamış gibisin.`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "over_shoulder"
+      },
+      {
+        sceneAction: `Intimate close-up two-shot in golden candlelit shadows. ${c1} sets the glass aside and turns toward ${c2}, gently brushing fingers across ${c2}'s hand with intense warmth.`,
+        dialogue: `${c1}: Tek planım senin yanında huzurlu bir akşam geçirmekti.`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "close_up_eyes"
+      },
+      {
+        sceneAction: `Cinematic sensual closing frame by the glowing night window. ${c2} pulls ${c1} into a close, tender embrace as soft amber reflections dance across the room.`,
+        dialogue: `${c2}: İyi ki varsın... Bu an hiç bitmesin.`,
+        onomatopoeia: "",
+        characters: [c1, c2],
+        cameraAngle: "romantic_dream"
       }
     ];
   }
@@ -2432,24 +2789,28 @@ function buildEnrichedBeatsForShortPrompt(
       {
         sceneAction: `Establishing medium shot inside the dimly lit neon-accented bar. ${c1} is sitting comfortably at the sleek polished mahogany counter with a drink, taking in the vibrant evening atmosphere.`,
         dialogue: `${c1}: Bu mekanın ışıkları ve havası insanı her seferinde kendine çekiyor...`,
+        onomatopoeia: "",
         characters: [c1],
         cameraAngle: "standard"
       },
       {
         sceneAction: `Dynamic medium two-shot at the counter. ${c2} approaches with an engaging charismatic smile, pulling up a bar stool right beside ${c1}.`,
         dialogue: `${c2}: Sonunda gelebildim! Bu kalabalıkta masayı tutmak pek kolay olmamıştır?`,
+        onomatopoeia: "GICIRR...",
         characters: [c1, c2],
         cameraAngle: "over_shoulder"
       },
       {
         sceneAction: `Intimate close-up two-shot under glowing magenta and cyan bar lights. ${c1} and ${c2} clink glasses with genuine shared laughter and intense eye contact.`,
         dialogue: `${c1}: Şansıma boştu diyelim... O zaman kadehimizi bu güzel akşama kaldıralım mı?`,
+        onomatopoeia: "KLİNK!",
         characters: [c1, c2],
         cameraAngle: "close_up_eyes"
       },
       {
         sceneAction: `Warm cinematic closing shot at the bar. ${c2} leans slightly forward against the mahogany counter, looking warmly into ${c1}'s eyes as the room blurs into a soft bokeh behind them.`,
         dialogue: `${c2}: Bütün bu gürültünün arasında sadece birbirimizi duymak bana yetiyor.`,
+        onomatopoeia: "",
         characters: [c1, c2],
         cameraAngle: "romantic_dream"
       }
@@ -2461,24 +2822,28 @@ function buildEnrichedBeatsForShortPrompt(
       {
         sceneAction: `Atmospheric wide establishing shot inside the cozy vintage cafe. ${c1} sits beside the rain-streaked window, warm steam rising softly from a cup on the rustic oak table.`,
         dialogue: `${c1}: Şehrin karmaşasından sonra buradaki kahve kokusu bile insanı dinlendiriyor...`,
+        onomatopoeia: "FIIIS...",
         characters: [c1],
         cameraAngle: "standard"
       },
       {
         sceneAction: `Warm medium two-shot across the wooden table. ${c2} walks in, pulling out the chair opposite ${c1} with a bright, welcoming smile.`,
         dialogue: `${c2}: Kusura bakma biraz geciktim ama seni gördüğüme çok sevindim!`,
+        onomatopoeia: "ÇIN!",
         characters: [c1, c2],
         cameraAngle: "over_shoulder"
       },
       {
         sceneAction: `Intimate close-up across the table. ${c1} and ${c2} lean in close, sharing a lively, heartfelt conversation with genuine warmth in their expressions.`,
         dialogue: `${c1}: Hiç sorun değil, önemli olan buradasın. Anlat bakalım, neler oldu?`,
+        onomatopoeia: "",
         characters: [c1, c2],
         cameraAngle: "close_up_eyes"
       },
       {
         sceneAction: `Cinematic concluding frame of the cafe rendezvous. A gentle smile and meaningful glance pass between ${c1} and ${c2} amidst the amber Edison bulb glow.`,
         dialogue: `${c2}: Zamanın nasıl aktığını sadece senin yanındayken unutuyorum.`,
+        onomatopoeia: "",
         characters: [c1, c2],
         cameraAngle: "romantic_dream"
       }
@@ -2490,24 +2855,28 @@ function buildEnrichedBeatsForShortPrompt(
       {
         sceneAction: `Atmospheric wide shot of the glistening city street at night. ${c1} strolls along the damp sidewalk as amber streetlamps cast long dramatic shadows.`,
         dialogue: `${c1}: Yağmurdan sonra şehrin bu sessiz hali her zaman bir başka güzel...`,
+        onomatopoeia: "ŞIRRR...",
         characters: [c1],
         cameraAngle: "standard"
       },
       {
         sceneAction: `Dynamic medium two-shot under the streetlights. ${c2} catches up alongside ${c1}, hands casually in pockets with an affectionate, knowing smile.`,
         dialogue: `${c2}: Bu soğukta yalnız yürümene izin vereceğimi düşünmedin herhalde?`,
+        onomatopoeia: "TAK TAK...",
         characters: [c1, c2],
         cameraAngle: "over_shoulder"
       },
       {
         sceneAction: `Dramatic close-up two-shot. ${c1} and ${c2} stop beneath a glowing streetlamp, catching each other's gaze as a cool breeze blows past.`,
         dialogue: `${c1}: Aslında nereye gittiğimi bilmiyordum ama seninle yürümek iyi geldi.`,
+        onomatopoeia: "",
         characters: [c1, c2],
         cameraAngle: "close_up_eyes"
       },
       {
         sceneAction: `Poignant closing two-shot on the city sidewalk. ${c2} steps closer to ${c1}, their silhouettes framed against the distant glowing metropolitan skyline.`,
         dialogue: `${c2}: Nereye gittiğimizin ne önemi var? Yan yana olduğumuz sürece her yol güzel.`,
+        onomatopoeia: "",
         characters: [c1, c2],
         cameraAngle: "romantic_dream"
       }
@@ -2519,24 +2888,28 @@ function buildEnrichedBeatsForShortPrompt(
     {
       sceneAction: `Cinematic wide establishing shot inside ${locName}. ${c1} arrives and surveys the detailed surroundings under atmospheric lighting.`,
       dialogue: `${c1}: Buranın havasında garip bir çekim var, beklediğimden çok daha etkileyici.`,
+      onomatopoeia: "",
       characters: [c1],
       cameraAngle: "standard"
     },
     {
       sceneAction: `Medium two-shot inside ${locName}. ${c2} turns to greet ${c1}, exchanging an expressive look full of unspoken curiosity.`,
       dialogue: `${c2}: Sonunda geldin... Seni burada görmek bütün günün yorgunluğunu aldı.`,
+      onomatopoeia: "TIIK...",
       characters: [c1, c2],
       cameraAngle: "over_shoulder"
     },
     {
       sceneAction: `Intimate close-up two-shot. ${c1} and ${c2} share a meaningful moment in close proximity, smiles and eyes locked together.`,
       dialogue: `${c1}: Konuşmamız gereken çok şey var ama önce bu anın tadını çıkaralım.`,
+      onomatopoeia: "",
       characters: [c1, c2],
       cameraAngle: "close_up_eyes"
     },
     {
       sceneAction: `Cinematic climax frame inside ${locName}. ${c1} and ${c2} standing together, sharing an impactful connection that anchors the story.`,
       dialogue: `${c2}: Haklısın. Ne olursa olsun bu anı asla unutmayalım.`,
+      onomatopoeia: "",
       characters: [c1, c2],
       cameraAngle: "romantic_dream"
     }
@@ -3076,13 +3449,20 @@ export function generateProceduralComicScript(
   const locName = primaryLoc.name;
   const locDesc = primaryLoc.visualManifest || primaryLoc.description;
 
+  const hasNewDirection = Boolean(
+    userDirection &&
+    userDirection.trim().length >= 3 &&
+    !/^(devam(\s+et)?|sonra|sonrası|ilerle|2\.?\s*sayfa|3\.?\s*sayfa|next)$/i.test(userDirection.trim())
+  );
+  const isContinuationAuto = history.length >= 4 && !hasNewDirection;
+
   const isShortPrompt = rawStoryText.split(/\s+/).length < 15 && 
     !rawStoryText.includes('"') && 
     !rawStoryText.includes('“') &&
     rawStoryText.split(/[.!?\n;]/).filter(s => s.trim().length > 0).length < 4;
 
-  if (isShortPrompt) {
-    const enriched = buildEnrichedBeatsForShortPrompt(rawStoryText, cast, locName, isRomance, isMature);
+  if (isShortPrompt || isContinuationAuto) {
+    const enriched = buildEnrichedBeatsForShortPrompt(rawStoryText, cast, locName, isRomance, isMature, history, hasNewDirection);
     panels = enriched.map((beat, i) => {
       const activeCharNames = beat.characters;
       const charTokens = activeCharNames.map(cn => {
@@ -3098,7 +3478,7 @@ export function generateProceduralComicScript(
       return {
         imagePrompt,
         dialogue: beat.dialogue,
-        onomatopoeia: "",
+        onomatopoeia: beat.onomatopoeia || "",
         characterNames: activeCharNames,
         layoutHint: "square",
         isMature: Boolean(isMature && (i === 2 || i === 3)),
@@ -3249,7 +3629,7 @@ export function generateProceduralComicScript(
     ];
   }
 
-  if (userDirection && userDirection.trim()) {
+  if (userDirection && userDirection.trim() && !isShortPrompt && !isContinuationAuto && userBeats.length !== 4) {
     panels[1].dialogue = `${userDirection.slice(0, 80)}...`;
     panels[1].imagePrompt += ` Specifically featuring: ${userDirection.slice(0, 100)}.`;
   }
@@ -3969,7 +4349,8 @@ export async function generateFullPageImage(
 ): Promise<string> {
   const styleEnhancement = getStyleEnhancement(style, colorPalette, lightingMood, consistencyLock);
   
-  const { inlineImageParts, referenceGuideText } = extractCharacterImageParts(cast, 3);
+  const combinedPanelsText = panels.slice(0, 4).map(p => p.imagePrompt).join(" ");
+  const { inlineImageParts, referenceGuideText } = extractCharacterImageParts(cast, 3, combinedPanelsText, "");
 
   let layoutDescription = `[MASTER COMIC PAGE DIRECTIVE]:
 Draw a complete, print-ready graphic novel page with EXACTLY 4 PANELS arranged in a symmetrical 2x2 GRID (2 rows × 2 columns).
@@ -3996,7 +4377,7 @@ Art Style: ${style}. ${styleEnhancement}
   if (matchedCharacters.length > 0) {
     continuityInstructions = "\n\n[STRICT CHARACTER STYLE SHEET & CANONICAL ATTIRE LOCK MANDATE]:\n" + 
       matchedCharacters.map(c => {
-        const attire = resolveCharacterAttireForScene(c, "", topic);
+        const attire = resolveCharacterAttireForScene(c, combinedPanelsText, "");
         const label = attire.isOverride ? `[OVERRIDE ATTIRE: "${attire.outfitName}"]` : `[MANDATORY CANONICAL ATTIRE]`;
         return `- ${c.name} ${label}: "${attire.outfitDescription}". Unless story explicitly commanded an outfit change, maintain this exact clothing across every panel. Full manifest: ${attire.fullReference}`;
       }).join("\n");
