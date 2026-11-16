@@ -29,7 +29,10 @@ import {
   Clock,
   EyeOff,
   Flame,
-  Camera
+  Camera,
+  Lock,
+  Target,
+  Loader2
 } from "lucide-react";
 import { 
   cn, 
@@ -41,6 +44,7 @@ import {
   EmotionPreset 
 } from "../lib/utils";
 import { PanelInpaintModal } from "./PanelInpaintModal";
+import { revisePanelPrompt } from "../services/geminiService";
 
 export interface PanelEditorOverlayProps {
   isOpen: boolean;
@@ -48,9 +52,13 @@ export interface PanelEditorOverlayProps {
   pageIndex: number;
   panelIndex: number;
   panelData: ComicPanelData;
+  pagePanels?: ComicPanelData[];
   cast: Character[];
   locations: LocationItem[];
   style?: string;
+  tone?: string;
+  colorPalette?: string;
+  lightingMood?: string;
   renderQuality?: string;
   usePaidApi?: boolean;
   isRegenerating?: boolean;
@@ -126,9 +134,13 @@ export const PanelEditorOverlay: React.FC<PanelEditorOverlayProps> = ({
   pageIndex,
   panelIndex,
   panelData,
+  pagePanels = [],
   cast,
   locations,
   style = "Modern Comic",
+  tone = "",
+  colorPalette = "",
+  lightingMood = "",
   renderQuality = "High",
   usePaidApi = false,
   isRegenerating = false,
@@ -138,6 +150,14 @@ export const PanelEditorOverlay: React.FC<PanelEditorOverlayProps> = ({
 }) => {
   // Inpaint modal state
   const [isInpaintOpen, setIsInpaintOpen] = useState<boolean>(false);
+
+  // Surgical single-panel revision state
+  const [surgicalInstruction, setSurgicalInstruction] = useState<string>("");
+  const [isRevisingPrompt, setIsRevisingPrompt] = useState<boolean>(false);
+  const [surgicalSummary, setSurgicalSummary] = useState<string | null>(null);
+  const [keepLocationLock, setKeepLocationLock] = useState<boolean>(true);
+  const [keepOutfitsLock, setKeepOutfitsLock] = useState<boolean>(true);
+  const [keepStyleLock, setKeepStyleLock] = useState<boolean>(true);
 
   // Form State
   const [imagePrompt, setImagePrompt] = useState<string>(panelData.imagePrompt || "");
@@ -302,7 +322,11 @@ export const PanelEditorOverlay: React.FC<PanelEditorOverlayProps> = ({
   };
 
   // Build current updated panel payload
-  const compileUpdatedPanel = (): Partial<ComicPanelData> => {
+  const compileUpdatedPanel = (
+    overridePrompt?: string,
+    overrideAngle?: string
+  ): Partial<ComicPanelData> => {
+    const effectiveAngle = overrideAngle ?? selectedAngle;
     // Build updated director config with exact character positions, poses, and emotions
     const updatedCharacterPoses: CharacterPoseSetting[] = activeCastMembers.map(c => {
       const slotId = characterSlots[c.id] || "merkez-on";
@@ -342,7 +366,7 @@ export const PanelEditorOverlay: React.FC<PanelEditorOverlayProps> = ({
     };
 
     // Construct clean prompt with spatial staging embedded
-    let finalPrompt = imagePrompt.trim();
+    let finalPrompt = (overridePrompt ?? imagePrompt).trim();
     const stagingNotes = activeCastMembers.map(c => {
       const slot = POSITION_SLOTS.find(s => s.id === characterSlots[c.id]);
       const pose = POSE_PRESETS.find(p => p.id === (characterPoses[c.id] || "action_ready"));
@@ -375,14 +399,69 @@ export const PanelEditorOverlay: React.FC<PanelEditorOverlayProps> = ({
       characterNames: selectedCharacterNames,
       directorConfig: {
         ...updatedDirectorConfig,
-        cameraAngle: selectedAngle || updatedDirectorConfig.cameraAngle
+        cameraAngle: effectiveAngle || updatedDirectorConfig.cameraAngle
       },
       characterStyleSheetRefs: updatedStyleSheetRefs,
       isMature,
       isBlurred,
-      cameraAngle: selectedAngle,
+      cameraAngle: effectiveAngle,
       modestyConcealment: selectedModesty as any
     };
+  };
+
+  // Surgical single-panel prompt revision with continuity locks
+  const handleSurgicalRevision = async (andRegenerate: boolean) => {
+    const trimmed = surgicalInstruction.trim();
+    if (!trimmed || isRevisingPrompt) return;
+
+    setIsRevisingPrompt(true);
+    setSurgicalSummary(null);
+    try {
+      const neighborContext = (pagePanels || [])
+        .map((p, idx) =>
+          idx !== panelIndex
+            ? `Panel ${idx + 1} (${p.characterNames?.join(", ") || "Kadro"}): ${p.imagePrompt.slice(0, 120)}`
+            : null
+        )
+        .filter(Boolean)
+        .join("\n");
+
+      const result = await revisePanelPrompt({
+        currentPrompt: imagePrompt,
+        userInstruction: trimmed,
+        locks: {
+          keepLocation: keepLocationLock,
+          keepOutfitsAndFaces: keepOutfitsLock,
+          keepStyleAndLighting: keepStyleLock
+        },
+        panelCharacters: activeCastMembers,
+        location: locations?.[0] || null,
+        neighborContext,
+        cameraAngle: selectedAngle,
+        style,
+        tone,
+        colorPalette,
+        lightingMood
+      });
+
+      const nextAngle = result.detectedCameraAngle || selectedAngle;
+      setImagePrompt(result.revisedPrompt);
+      if (result.detectedCameraAngle) {
+        setSelectedAngle(result.detectedCameraAngle);
+      }
+      setSurgicalSummary(result.summaryTr);
+
+      if (andRegenerate && onRegenerateThisPanel) {
+        const updated = compileUpdatedPanel(result.revisedPrompt, nextAngle);
+        onSave(updated);
+        await onRegenerateThisPanel(updated);
+      }
+    } catch (err) {
+      console.error("Nokta atışı panel düzeltme hatası:", err);
+      setSurgicalSummary("Düzenleme sırasında sorun oluştu, promptu manuel güncelleyebilirsiniz.");
+    } finally {
+      setIsRevisingPrompt(false);
+    }
   };
 
   // 1. Manual Save without re-generation
@@ -903,6 +982,128 @@ export const PanelEditorOverlay: React.FC<PanelEditorOverlayProps> = ({
                       <p className="text-[10px] font-mono text-slate-400">
                         🚫 Hariç tutulan (çizilmeyecek): {excludedCastMembers.map(c => c.name).join(", ")}
                       </p>
+                    )}
+                  </div>
+
+                  {/* 🎯 Surgical Single-Panel Fix Box */}
+                  <div className="p-3 bg-gradient-to-br from-purple-950/60 via-slate-950 to-slate-950 border-2 border-purple-500/60 shadow-comic-xs space-y-2.5">
+                    <div className="flex items-center justify-between flex-wrap gap-1">
+                      <span className="text-[11px] font-display text-yellow-300 uppercase tracking-wider flex items-center gap-1.5 font-bold">
+                        <Target size={14} className="text-red-400" />
+                        Nokta Atışı Düzeltme (Aynı Sayfayı Bozmadan)
+                      </span>
+                      <span className="text-[9px] font-mono text-purple-300 bg-purple-900/40 px-1.5 py-0.5 border border-purple-500/40">
+                        Sadece Kare #{panelIndex + 1} Değişir
+                      </span>
+                    </div>
+
+                    {/* Quick Surgical Presets */}
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { label: "🔍 Yakın Çekim", cmd: "Kamera yakın çekim olsun, yüz ifadelerine ve duygulara odaklan" },
+                        { label: "😊 Bakış & İfade", cmd: "Karakterler birbirine bakarak sıcak şekilde gülümsesin" },
+                        { label: "🔄 Aksiyonu Netleştir", cmd: "Sahnede aktif hareket ve fiziksel etkileşim çok net görünsün" },
+                        { label: "👥 Herkesi Göster", cmd: "Paneldeki tüm seçili karakterler aynı karede net görünsün" },
+                        { label: "🌅 Mekanı Genişlet", cmd: "Geniş açı çekimle tüm mekan atmosferi ve detaylar görünsün" }
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => setSurgicalInstruction(preset.cmd)}
+                          className="px-2 py-0.5 bg-slate-900 hover:bg-purple-600 text-slate-200 hover:text-white border border-slate-700 text-[10px] font-mono transition-colors cursor-pointer"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <textarea
+                      value={surgicalInstruction}
+                      onChange={(e) => setSurgicalInstruction(e.target.value)}
+                      rows={2}
+                      placeholder="Türkçe neyin değişmesini istediğini yaz (Örn: 'İkisi birbirine sarılıp dans etsin, bar arka planı ve elbiseleri değişmesin')"
+                      className="w-full p-2 bg-slate-900 border border-purple-500/50 text-xs font-comic text-white placeholder:text-slate-500 focus:outline-none focus:border-yellow-400 resize-none"
+                    />
+
+                    {/* Continuity Lock Toggles */}
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
+                      <span className="text-slate-400 flex items-center gap-1">
+                        <Lock size={11} className="text-emerald-400" /> Koru:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setKeepLocationLock(v => !v)}
+                        className={cn(
+                          "px-2 py-0.5 border transition-colors cursor-pointer",
+                          keepLocationLock
+                            ? "bg-emerald-900/60 text-emerald-300 border-emerald-500/60 font-bold"
+                            : "bg-slate-900 text-slate-500 border-slate-700"
+                        )}
+                      >
+                        {keepLocationLock ? "✓" : "○"} Mekan & Arka Plan
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setKeepOutfitsLock(v => !v)}
+                        className={cn(
+                          "px-2 py-0.5 border transition-colors cursor-pointer",
+                          keepOutfitsLock
+                            ? "bg-emerald-900/60 text-emerald-300 border-emerald-500/60 font-bold"
+                            : "bg-slate-900 text-slate-500 border-slate-700"
+                        )}
+                      >
+                        {keepOutfitsLock ? "✓" : "○"} Kıyafet & Yüzler
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setKeepStyleLock(v => !v)}
+                        className={cn(
+                          "px-2 py-0.5 border transition-colors cursor-pointer",
+                          keepStyleLock
+                            ? "bg-emerald-900/60 text-emerald-300 border-emerald-500/60 font-bold"
+                            : "bg-slate-900 text-slate-500 border-slate-700"
+                        )}
+                      >
+                        {keepStyleLock ? "✓" : "○"} Işık & Stil
+                      </button>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handleSurgicalRevision(false)}
+                        disabled={isRevisingPrompt || isRegenerating || !surgicalInstruction.trim()}
+                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-yellow-300 border border-yellow-400/50 text-[11px] font-display uppercase font-bold flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+                        title="Önce sadece promptu günceller, isterseniz aşağıdan kontrol edebilirsiniz"
+                      >
+                        {isRevisingPrompt ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+                        <span>Promptu Güncelle</span>
+                      </button>
+
+                      {onRegenerateThisPanel && (
+                        <button
+                          type="button"
+                          onClick={() => handleSurgicalRevision(true)}
+                          disabled={isRevisingPrompt || isRegenerating || !surgicalInstruction.trim()}
+                          className="flex-1 sm:flex-none px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-red-600 hover:from-purple-500 hover:to-red-500 text-white border-2 border-black text-[11px] font-display uppercase font-bold tracking-wider shadow-comic-xs active:scale-95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer"
+                          title="Kilitli detayları koruyup komutu uygular ve yalnızca bu paneli yeniden çizer"
+                        >
+                          {isRevisingPrompt || isRegenerating ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            <Target size={13} />
+                          )}
+                          <span>Uygula ve Sadece Bu Kareyi Çiz</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {surgicalSummary && (
+                      <div className="p-2 bg-emerald-950/60 border border-emerald-500/50 text-[11px] font-mono text-emerald-300 flex items-center gap-1.5">
+                        <Check size={13} className="flex-shrink-0" />
+                        <span>{surgicalSummary}</span>
+                      </div>
                     )}
                   </div>
 

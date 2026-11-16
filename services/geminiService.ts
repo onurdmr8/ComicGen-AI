@@ -11,6 +11,8 @@ import {
   NarrativeMemoryItem,
   CharacterStyleSheet,
   CharacterStyleSheetRef,
+  RevisedPanelResult,
+  SurgicalRevisionLocks,
   COMIC_ART_STYLES
 } from "../types";
 
@@ -823,5 +825,25 @@ export const editPanelImageInpainting = async (
     renderQuality,
     usePaidApi,
     imageProvider
+  });
+};
+
+export const revisePanelPrompt = async (params: {
+  currentPrompt: string;
+  userInstruction: string;
+  locks?: SurgicalRevisionLocks;
+  panelCharacters?: Character[];
+  location?: LocationItem | null;
+  neighborContext?: string;
+  cameraAngle?: string;
+  style?: string;
+  tone?: string;
+  colorPalette?: string;
+  lightingMood?: string;
+}): Promise<RevisedPanelResult> => {
+  return callBackendApi<RevisedPanelResult>("revisePanelPrompt", {
+    ...params,
+    panelCharacters: params.panelCharacters ? sanitizeCast(params.panelCharacters) : [],
+    location: params.location ? sanitizeLocations([params.location])[0] : null
   });
 };

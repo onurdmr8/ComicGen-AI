@@ -13,9 +13,12 @@ interface ComicPageDisplayProps {
   cast?: Character[];
   locations?: LocationItem[];
   style?: string;
+  tone?: string;
+  colorPalette?: string;
+  lightingMood?: string;
   renderQuality?: string;
   usePaidApi?: boolean;
-  imageProvider?: "auto" | "pollinations_flux" | "gemini";
+  imageProvider?: "auto" | "pollinations_flux" | "together_flux" | "fal_flux" | "gemini";
   onPanelClick: (imageUrl: string) => void;
   onRegeneratePanel: (panelIndex: number) => void;
   onRegenerateFullPage?: (pageId: string) => void;
@@ -63,6 +66,9 @@ export const ComicPageDisplay: React.FC<ComicPageDisplayProps> = ({
   cast = [],
   locations = [],
   style = "Modern Comic",
+  tone,
+  colorPalette,
+  lightingMood,
   renderQuality = "High",
   usePaidApi = false,
   imageProvider = "pollinations_flux",
@@ -425,8 +431,15 @@ export const ComicPageDisplay: React.FC<ComicPageDisplayProps> = ({
           pageIndex={pageIndex}
           panelIndex={activeEditorPanelIdx}
           panelData={page.panels[activeEditorPanelIdx]}
+          pagePanels={page.panels}
           cast={cast}
           locations={locations}
+          style={style}
+          tone={tone}
+          colorPalette={colorPalette}
+          lightingMood={lightingMood}
+          renderQuality={renderQuality}
+          usePaidApi={usePaidApi}
           isRegenerating={page.panels[activeEditorPanelIdx].isLoading || false}
           onSave={(updated) => {
             if (onUpdatePanel) {

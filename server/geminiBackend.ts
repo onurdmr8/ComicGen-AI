@@ -14,11 +14,14 @@ import {
   CharacterStyleSheetRef,
   CharacterOutfit,
   CharacterRelationship,
+  RevisedPanelResult,
+  SurgicalRevisionLocks,
   COMIC_ART_STYLES
 } from "../types";
 import { isNameMatch, isCharacterMentioned, normalizeTurkish, POSITION_SLOTS } from "../lib/utils";
 import { formatRelationshipForPrompt } from "../lib/relationshipPresets";
 import { detectLocationsClientRegex, getThematicDefaultLocation } from "../lib/locationDetector";
+import { applyCameraAngleToPrompt, getCameraAnglePreset } from "../lib/cameraAnglePresets";
 import { AsyncLocalStorage } from "async_hooks";
 
 export const geminiRequestContext = new AsyncLocalStorage<{ 
@@ -4727,4 +4730,274 @@ ${characterContext ? `[CHARACTER CONTINUITY]:\n${characterContext}` : ""}
 [ART STYLE & FINISH]: ${style}. ${styleEnhancement}`;
 
   return await generateImageWithFallback(fullEditPrompt, "1:1", imageParts, false, "pg17", "auto", renderQuality, imageProvider);
+}
+
+/**
+ * Translates common Turkish surgical panel instructions into focused English visual directives
+ * while preserving locked location, character attire/appearance, and camera framing.
+ */
+function buildDeterministicRevisedPrompt(params: {
+  currentPrompt: string;
+  userInstruction: string;
+  locks: SurgicalRevisionLocks;
+  panelCharacters: Character[];
+  location?: LocationItem | null;
+  cameraAngle?: string;
+}): { revisedPrompt: string; summaryTr: string; detectedCameraAngle?: string } {
+  const { currentPrompt, userInstruction, locks, panelCharacters, location, cameraAngle } = params;
+  const norm = normalizeTr(userInstruction);
+
+  // 1. Strip old locked markers so we re-apply cleanly without duplication
+  let basePrompt = (currentPrompt || "")
+    .replace(/\[LOCKED LOCATION:[^\]]*\]/gi, "")
+    .replace(/\[LOCKED ATTIRE & APPEARANCE:[^\]]*\]/gi, "")
+    .replace(/\[SURGICAL DIRECTION:[^\]]*\]/gi, "")
+    .trim();
+
+  // 2. Detect camera framing cues from user instruction
+  let detectedAngle = cameraAngle;
+  if (/yakin\s*cekim|yakin\s*plan|goz|dudak|yuz\s*ifade|close\s*up/i.test(norm)) {
+    detectedAngle = "close_up_eyes";
+  } else if (/genis\s*aci|tum\s*mekan|genis\s*plan|uzaktan|wide\s*shot/i.test(norm)) {
+    detectedAngle = "wide_cinematic";
+  } else if (/omuz\s*ustu|arkasindan|over.*shoulder/i.test(norm)) {
+    detectedAngle = "over_shoulder";
+  } else if (/kus\s*bakisi|tepeden|ustten/i.test(norm)) {
+    detectedAngle = "birds_eye";
+  } else if (/alttan|asagidan|kahraman\s*aci/i.test(norm)) {
+    detectedAngle = "low_angle_heroic";
+  }
+
+  // 3. Translate Turkish visual action/expression edits into crisp English tokens
+  const visualEdits: string[] = [];
+  if (/gulumse|gulus|guluyor|mutlu|tebessum/.test(norm)) {
+    visualEdits.push("characters smiling warmly with joyful expressive eyes");
+  }
+  if (/birbirine\s*bak|goz\s*goze/.test(norm)) {
+    visualEdits.push("characters locking eyes intently facing each other");
+  }
+  if (/saril|kucakla/.test(norm)) {
+    visualEdits.push("warm close embrace holding each other tightly");
+  }
+  if (/dans\s*et|dans\s*ed/.test(norm)) {
+    visualEdits.push("characters dancing closely together in dynamic graceful motion");
+  }
+  if (/el\s*ele|elini\s*tut/.test(norm)) {
+    visualEdits.push("characters holding hands affectionately");
+  }
+  if (/opus|opucuk/.test(norm)) {
+    visualEdits.push("sharing an intimate romantic kiss");
+  }
+  if (/agla|goz\s*yasi|uzgun/.test(norm)) {
+    visualEdits.push("tearful emotional facial expression");
+  }
+  if (/saskin|sasir/.test(norm)) {
+    visualEdits.push("shocked wide-eyed surprised reaction");
+  }
+  if (/ofke|sinir|kizgin|bagir/.test(norm)) {
+    visualEdits.push("fierce angry expression, tense confrontational posture");
+  }
+  if (/otur/.test(norm)) {
+    visualEdits.push("characters seated naturally together");
+  }
+  if (/ayakta|kalk/.test(norm)) {
+    visualEdits.push("characters standing upright facing the scene");
+  }
+  if (/yuru/.test(norm)) {
+    visualEdits.push("characters walking side by side in motion");
+  }
+  if (/tek\s*kare|tek\s*sahne|tum\s*karakter|ikisi\s*de\s*gorun|beraber\s*gorun/.test(norm) && panelCharacters.length > 0) {
+    visualEdits.push(`all characters (${panelCharacters.map(c => c.name).join(" and ")}) clearly visible together in frame`);
+  }
+
+  // 4. Detect explicit outfit override inside the revision instruction
+  const outfitOverrides: string[] = [];
+  const changedCharIds = new Set<string>();
+
+  for (const char of panelCharacters) {
+    const charNorm = normalizeTr(char.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const charRemovesJacket = new RegExp(`\\b${charNorm}\\b[^,.!?]*\\b(ceket|palto|mont|hirka)\\w*\\s+cikar`, "i").test(norm);
+
+    if (charRemovesJacket) {
+      outfitOverrides.push(`${char.name} with outer jacket removed, wearing fitted inner top`);
+      changedCharIds.add(char.id);
+      continue;
+    }
+
+    const phrase = extractTurkishClothingPhrase(userInstruction, char.name);
+    if (phrase && !/cikar|birak/i.test(normalizeTr(phrase))) {
+      // Skip accidental cross-character phrase match when another character name leads the phrase
+      const phraseNorm = normalizeTr(phrase);
+      const belongsToOtherChar = panelCharacters.some(
+        other => other.id !== char.id && new RegExp(`^${normalizeTr(other.name)}\\b`, "i").test(phraseNorm)
+      );
+      if (!belongsToOtherChar) {
+        outfitOverrides.push(`${char.name} wearing ${translateTurkishOutfitToEnglish(phrase)}`);
+        changedCharIds.add(char.id);
+      }
+    }
+  }
+
+  if (outfitOverrides.length === 0 && /(ceketini?|palto|mont|hirka).*cikar|ustunu?\s*degis/i.test(norm)) {
+    outfitOverrides.push(translateTurkishOutfitToEnglish(userInstruction));
+  }
+
+  // Build final surgical directive
+  const summaryParts: string[] = [];
+  const directiveSegments: string[] = [];
+
+  if (visualEdits.length > 0) {
+    directiveSegments.push(visualEdits.join(", "));
+    summaryParts.push("Aksiyon/ifade komutu uygulandı");
+  } else if (userInstruction.trim()) {
+    directiveSegments.push(userInstruction.trim());
+    summaryParts.push("Özel düzenleme notu eklendi");
+  }
+
+  if (outfitOverrides.length > 0) {
+    directiveSegments.push(`Updated attire: ${outfitOverrides.join("; ")}`);
+    summaryParts.push("Kıyafet güncellendi");
+  }
+
+  if (locks.keepOutfitsAndFaces !== false && panelCharacters.length > 0) {
+    const unchangedChars = panelCharacters.filter(c => !changedCharIds.has(c.id));
+    if (unchangedChars.length > 0) {
+      const attireLocks = unchangedChars.map(c => {
+        const canonical = getCharacterCanonicalAttire(c);
+        return `${c.name}: ${canonical.physicalTraits ? `${canonical.physicalTraits}, ` : ""}wearing ${canonical.outfitDescription}`;
+      });
+      directiveSegments.push(`[LOCKED ATTIRE & APPEARANCE: ${attireLocks.join(" | ")}]`);
+      summaryParts.push(changedCharIds.size > 0 ? "Diğer karakterlerin kıyafeti ve yüzleri korundu" : "Kıyafet ve yüz tutarlılığı kilitlendi");
+    }
+  }
+
+  if (locks.keepLocation !== false && location) {
+    const locDesc = location.visualManifest || location.description || location.name;
+    directiveSegments.push(`[LOCKED LOCATION: Same ${location.name} background environment — ${locDesc}]`);
+    summaryParts.push(`Mekan (${location.name}) korundu`);
+  }
+
+  let updated = `${directiveSegments.join(". ")}. ${basePrompt}`.trim();
+  if (detectedAngle && detectedAngle !== "standard") {
+    updated = applyCameraAngleToPrompt(updated, detectedAngle);
+    const preset = getCameraAnglePreset(detectedAngle);
+    if (preset) summaryParts.push(`Kamera: ${preset.label}`);
+  }
+
+  return {
+    revisedPrompt: updated.replace(/\s{2,}/g, " ").trim(),
+    summaryTr: summaryParts.join(" • ") || "Panel promptu güncellendi.",
+    detectedCameraAngle: detectedAngle
+  };
+}
+
+/**
+ * Surgically revises a single comic panel prompt based on natural language feedback (Turkish or English),
+ * while optionally locking location, character faces/outfits, style, and neighboring panel continuity.
+ */
+export async function revisePanelPrompt(params: {
+  currentPrompt: string;
+  userInstruction: string;
+  locks?: SurgicalRevisionLocks;
+  panelCharacters?: Character[];
+  location?: LocationItem | null;
+  neighborContext?: string;
+  cameraAngle?: string;
+  style?: string;
+  tone?: string;
+  colorPalette?: string;
+  lightingMood?: string;
+}): Promise<RevisedPanelResult> {
+  const {
+    currentPrompt = "",
+    userInstruction = "",
+    locks = { keepLocation: true, keepOutfitsAndFaces: true, keepStyleAndLighting: true },
+    panelCharacters = [],
+    location = null,
+    neighborContext = "",
+    cameraAngle,
+    style = "Modern Comic",
+    tone = "",
+    colorPalette = "",
+    lightingMood = ""
+  } = params;
+
+  const fallback = buildDeterministicRevisedPrompt({
+    currentPrompt,
+    userInstruction,
+    locks,
+    panelCharacters,
+    location,
+    cameraAngle
+  });
+
+  const ai = getAIOrNull();
+  if (!ai || !userInstruction.trim()) {
+    return fallback;
+  }
+
+  const lockedAttireInfo = panelCharacters.map(c => {
+    const canonical = getCharacterCanonicalAttire(c);
+    return `- ${c.name}: Physical: ${canonical.physicalTraits}. Registered Outfit (${canonical.outfitName}): ${canonical.outfitDescription}`;
+  }).join("\n");
+
+  const lockedLocationInfo = location
+    ? `${location.name}: ${location.visualManifest || location.description}`
+    : "Preserve existing background setting from current prompt";
+
+  const presetInfo = cameraAngle ? getCameraAnglePreset(cameraAngle) : undefined;
+
+  const prompt = `You are a precision Comic Book Visual Director editing ONE SINGLE PANEL prompt without breaking continuity across the rest of the page.
+
+[CURRENT PANEL IMAGE PROMPT]:
+${currentPrompt}
+
+[USER REVISION INSTRUCTION (Turkish or English)]:
+"${userInstruction}"
+
+[CONTINUITY LOCKS TO RESPECT]:
+- Keep Location & Background: ${locks.keepLocation !== false ? `YES — strictly maintain this setting: ${lockedLocationInfo}` : "NO — allow changing setting if user asked"}
+- Keep Character Faces & Outfits: ${locks.keepOutfitsAndFaces !== false ? `YES — strictly maintain character traits & outfits unless user explicitly asks to change clothing:\n${lockedAttireInfo || "Maintain existing characters"}` : "NO — allow appearance adjustment"}
+- Keep Style & Lighting: ${locks.keepStyleAndLighting !== false ? `YES — ${style}, Tone: ${tone || "consistent"}, Palette: ${colorPalette || "page palette"}, Mood: ${lightingMood || "page lighting"}` : "Flexible"}
+${presetInfo ? `- Requested Camera Angle: ${presetInfo.label} (${presetInfo.promptModifier})` : ""}
+${neighborContext ? `[NEIGHBORING PANELS ON SAME PAGE FOR CONTINUITY]:\n${neighborContext}` : ""}
+
+TASK:
+1. Rewrite the image prompt into a crisp, vivid, cohesive ENGLISH scene prompt for an AI image generator (single isolated panel, NO speech bubbles, NO text, NO multi-panel grid).
+2. Apply ONLY what the user requested (framing, expression, pose, interaction, action, or requested outfit tweak), while keeping all locked aspects intact.
+3. Also return a short 1-sentence Turkish confirmation summary ("summaryTr") explaining what was changed and what stayed locked.`;
+
+  const responseSchema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      revisedPrompt: { type: Type.STRING },
+      summaryTr: { type: Type.STRING }
+    },
+    required: ["revisedPrompt", "summaryTr"]
+  };
+
+  try {
+    const response = await ai.models.generateContent({
+      model: STORY_MODEL,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema
+      }
+    });
+    const text = extractTextContent(response);
+    if (!text) return fallback;
+    const parsed = parseJsonFromText(text, fallback);
+    if (!parsed?.revisedPrompt || parsed.revisedPrompt.trim().length < 15) {
+      return fallback;
+    }
+    return {
+      revisedPrompt: parsed.revisedPrompt.trim(),
+      summaryTr: parsed.summaryTr || fallback.summaryTr,
+      detectedCameraAngle: fallback.detectedCameraAngle
+    };
+  } catch (err) {
+    console.warn("revisePanelPrompt Gemini fallback used:", err);
+    return fallback;
+  }
 }

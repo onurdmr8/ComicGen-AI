@@ -4,7 +4,7 @@ import {
   Palette, Ghost, Info, Swords, Menu, Info as InfoIcon, RotateCcw,
   CreditCard, ShieldCheck, Check, Library, BookmarkPlus, BookmarkCheck, Search, Users, ExternalLink,
   MapPin, Compass, BookOpen, Brain, ShieldAlert, Sun, Lock, Layers, GitBranch, FileText, Shirt, Flame, Eye, EyeOff, Camera, Heart,
-  KeyRound, UploadCloud, Image as ImageIcon, Dices
+  KeyRound, UploadCloud, Image as ImageIcon, Dices, Film
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Character, CharacterOutfit, ComicConfig, GeneratorStatus, LocationItem, NarrativeContinuityMemory, POLLINATIONS_MODELS, COMIC_ART_STYLES } from "../types";
@@ -35,6 +35,7 @@ interface SidebarProps {
   config: ComicConfig;
   setConfig: React.Dispatch<React.SetStateAction<ComicConfig>>;
   onGenerate: () => void;
+  onPlanStoryboard?: () => void;
   onAutoFill: () => void;
   status: GeneratorStatus;
   isOpen: boolean;
@@ -58,6 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   config,
   setConfig,
   onGenerate,
+  onPlanStoryboard,
   onAutoFill,
   status,
   isOpen,
@@ -2353,6 +2355,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         4 KARE
                     </span>
                 </div>
+
+                {onPlanStoryboard && (
+                    <button
+                        type="button"
+                        onClick={onPlanStoryboard}
+                        disabled={isLoading || !config.topic || !config.intro}
+                        className={cn(
+                            "w-full mb-2 py-2 rounded-none font-display text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 border-2 border-black transition-all",
+                            isLoading || !config.topic || !config.intro
+                                ? "bg-slate-800/80 text-slate-500 border-slate-700 cursor-not-allowed opacity-70"
+                                : "bg-slate-900 hover:bg-yellow-400 text-yellow-300 hover:text-black shadow-comic-xs cursor-pointer"
+                        )}
+                        title="Görselleri çizmeden önce 4 karelik senaryo ve kamera planını görüp düzenleyin"
+                    >
+                        <Film size={14} />
+                        <span>Önce Storyboard Planla (Görsel Basmadan Onayla)</span>
+                    </button>
+                )}
 
                 <button
                     onClick={onGenerate}

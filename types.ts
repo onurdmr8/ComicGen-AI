@@ -15,6 +15,18 @@ export interface ComicScriptResult {
   detectedLocations?: DetectedLocation[];
 }
 
+export interface SurgicalRevisionLocks {
+  keepLocation?: boolean;
+  keepOutfitsAndFaces?: boolean;
+  keepStyleAndLighting?: boolean;
+}
+
+export interface RevisedPanelResult {
+  revisedPrompt: string;
+  summaryTr: string;
+  detectedCameraAngle?: string;
+}
+
 export interface CharacterOutfit {
   id: string;
   name: string; // e.g. "Gündelik Sokak", "Taktik Muharebe Zırhı", "Gizli Gece Kamuflajı", "Resmi Takım", "Yırtık / Hasarlı", vb.

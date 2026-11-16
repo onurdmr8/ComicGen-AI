@@ -210,6 +210,9 @@ async function startServer() {
             body.imageProvider
           );
           break;
+        case "revisePanelPrompt":
+          result = await geminiBackend.revisePanelPrompt(body);
+          break;
         default:
           return res.status(404).json({ error: `Bilinmeyen Gemini aksiyonu: ${action}` });
       }

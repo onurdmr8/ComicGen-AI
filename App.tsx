@@ -7,10 +7,12 @@ import { FullPdfExportModal } from "./components/FullPdfExportModal";
 import { SavedStoriesModal } from "./components/SavedStoriesModal";
 import { StoryTemplatesModal } from "./components/StoryTemplatesModal";
 import { ApiKeyModal } from "./components/ApiKeyModal";
+import { StoryboardPreviewModal } from "./components/StoryboardPreviewModal";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ComicConfig,
   ComicPage,
+  ComicScriptResult,
   GeneratorStatus,
   ComicPanelData,
   Character,
@@ -35,7 +37,7 @@ import {
   getPollinationsApiKey,
   getPollinationsModel
 } from "./services/geminiService";
-import { PlusCircle, Info, Ghost, X, Send, Menu, Sparkles, Loader2, Zap, Download, ChevronRight, Book, Monitor, RotateCcw, Check, AlertTriangle, Copy, Clock, CreditCard, Brain, GitBranch, FileText, Trash2, RefreshCw, BookOpen, BookmarkCheck, BookmarkPlus, Users, KeyRound, Flame, MapPin } from "lucide-react";
+import { PlusCircle, Info, Ghost, X, Send, Menu, Sparkles, Loader2, Zap, Download, ChevronRight, Book, Monitor, RotateCcw, Check, AlertTriangle, Copy, Clock, CreditCard, Brain, GitBranch, FileText, Trash2, RefreshCw, BookOpen, BookmarkCheck, BookmarkPlus, Users, KeyRound, Flame, MapPin, Film } from "lucide-react";
 import html2canvas from "html2canvas";
 import { generateId, cn, isNameMatch } from "./lib/utils";
 import { pickOutfitIcon } from "./lib/outfitPresets";
@@ -128,6 +130,12 @@ export default function App() {
   const [showNextPageModal, setShowNextPageModal] = useState(false);
   const [userDirection, setUserDirection] = useState("");
   const [selectedPageCharacterIds, setSelectedPageCharacterIds] = useState<string[]>([]);
+  const [storyboardDraft, setStoryboardDraft] = useState<{
+    scriptData: ComicScriptResult;
+    effectiveConfig: ComicConfig;
+    direction: string;
+  } | null>(null);
+  const [isRewritingStoryboard, setIsRewritingStoryboard] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMemoryModalOpen, setIsMemoryModalOpen] = useState(false);
@@ -558,7 +566,12 @@ export default function App() {
      await performGeneration("");
   };
 
-  const confirmNextPageGeneration = () => {
+  const handlePlanStoryboardFromSidebar = async () => {
+     if (window.innerWidth < 1024) setIsSidebarOpen(false);
+     await openStoryboardDraft("");
+  };
+
+  const buildNextPageDirection = (): string => {
      setShowNextPageModal(false);
      let enrichedDirection = userDirection;
 
@@ -595,26 +608,26 @@ export default function App() {
          : `[SAYFA ODAK KARAKTERLERİ: Bu sayfadaki sahneler kesinlikle yalnızca ${selectedChars.join(", ")} odaklı olmalıdır]. `;
        enrichedDirection = `${charDirective}${userDirection}`.trim();
      }
+     return enrichedDirection;
+  };
+
+  const confirmNextPageGeneration = () => {
+     const enrichedDirection = buildNextPageDirection();
      performGeneration(enrichedDirection);
   };
 
-  const performGeneration = async (direction: string) => {
-    if (status !== GeneratorStatus.IDLE && status !== GeneratorStatus.COMPLETE && status !== GeneratorStatus.ERROR) return;
+  const confirmNextPageStoryboard = () => {
+     const enrichedDirection = buildNextPageDirection();
+     openStoryboardDraft(enrichedDirection);
+  };
 
-    try {
-      setStatus(GeneratorStatus.GENERATING_STORY);
-      const newPageId = generateId();
-      const skeletonPanels: ComicPanelData[] = Array.from({ length: 4 }, (_, idx) => ({
-        id: `${newPageId}-skeleton-${idx}`,
-        imagePrompt: "",
-        dialogue: "",
-        characterNames: [],
-        isLoading: true,
-      }));
-
-      const newPage: ComicPage = { id: newPageId, panels: skeletonPanels, layoutType: "grid-2x2" };
-      setPages((prev) => [...prev, newPage]);
-
+  /**
+   * Resolves effective location/tone config, generates comic script, and applies detected outfits/locations.
+   */
+  const prepareScriptForPage = async (direction: string): Promise<{
+    scriptData: ComicScriptResult;
+    effectiveConfig: ComicConfig;
+  }> => {
       const history = pages.flatMap((p, pIdx) => 
         p.panels.map((panel, panIdx) => 
           `[Sayfa ${pIdx + 1}, Panel ${panIdx + 1}] (${panel.characterNames?.join(", ") || "Karakterler"}): "${panel.dialogue}" | Görsel/Olay: ${panel.imagePrompt?.slice(0, 160) || "Sahne"}`
@@ -737,12 +750,23 @@ export default function App() {
         }
       }
 
+      return { scriptData, effectiveConfig };
+  };
+
+  /**
+   * Populates a page with finalized panels and renders all panel images in batches of 2.
+   */
+  const renderPanelsForPage = async (
+    newPageId: string,
+    scriptData: ComicScriptResult,
+    effectiveConfig: ComicConfig
+  ) => {
       setPages((prev) =>
         prev.map((p) =>
           p.id === newPageId
             ? { 
                 ...p, 
-                layoutType: scriptData.layoutType,
+                layoutType: (scriptData.layoutType as ComicPage["layoutType"]) || "grid-2x2",
                 panels: scriptData.panels.map((sp: any, spIdx: number) => {
                   const isMature = Boolean(
                     sp.isMature || 
@@ -770,7 +794,6 @@ export default function App() {
         const effectiveQuality = effectiveConfig.usePaidApi ? "Ultra" : (effectiveConfig.renderQuality || "High");
         
         // Generate in batches of 2 (Panels 1 & 2 first, then Panels 3 & 4)
-        // This cuts concurrent memory in half, prevents browser freezes, and avoids server OOM
         for (let batchStart = 0; batchStart < scriptData.panels.length; batchStart += 2) {
           const batch = scriptData.panels.slice(batchStart, batchStart + 2);
           await Promise.all(batch.map(async (panel: ComicPanelData, offset: number) => {
@@ -825,7 +848,6 @@ export default function App() {
 
         setStatus(GeneratorStatus.COMPLETE);
 
-        // Sayfa Devamlılığı & Mantık Hafızası: Extract memory updates if enabled
         if (config.storyMemory?.enabled !== false) {
           try {
             const pageNumber = pages.length + 1;
@@ -838,7 +860,6 @@ export default function App() {
             if (updates.newMemories.length > 0 || updates.updatedSummary) {
               setConfig(prev => {
                 const existing = prev.storyMemory?.memories || [];
-                // Merge unique memories
                 const existingDescSet = new Set(existing.map(m => m.description.toLowerCase()));
                 const trulyNew = updates.newMemories.filter(m => !existingDescSet.has(m.description.toLowerCase()));
                 return {
@@ -858,7 +879,6 @@ export default function App() {
         }
       } catch (imgError: any) {
         console.error("Görsel oluşturma hatası:", imgError);
-        // Do NOT delete the page! The comic story script and dialogue were generated successfully.
         setPages((prev) =>
           prev.map((p) =>
             p.id === newPageId
@@ -870,37 +890,6 @@ export default function App() {
           )
         );
         setStatus(GeneratorStatus.COMPLETE);
-
-        // Still extract memory if story script was successful
-        if (config.storyMemory?.enabled !== false) {
-          try {
-            const pageNumber = pages.length + 1;
-            const updates = await extractNarrativeMemoryUpdates(
-              scriptData.panels,
-              pageNumber,
-              config.cast || [],
-              config.storyMemory
-            );
-            if (updates.newMemories.length > 0 || updates.updatedSummary) {
-              setConfig(prev => {
-                const existing = prev.storyMemory?.memories || [];
-                const existingDescSet = new Set(existing.map(m => m.description.toLowerCase()));
-                const trulyNew = updates.newMemories.filter(m => !existingDescSet.has(m.description.toLowerCase()));
-                return {
-                  ...prev,
-                  storyMemory: {
-                    enabled: prev.storyMemory?.enabled ?? true,
-                    autoExtract: prev.storyMemory?.autoExtract ?? true,
-                    memories: [...existing, ...trulyNew],
-                    plotSummary: updates.updatedSummary || prev.storyMemory?.plotSummary || ""
-                  }
-                };
-              });
-            }
-          } catch (memErr) {
-            console.warn("Otomatik mantık hafızası çıkarımında sorun:", memErr);
-          }
-        }
         const parsed = parseGeminiError(imgError);
         setApiError({
           isOpen: true,
@@ -911,6 +900,83 @@ export default function App() {
           promptToCopy: scriptData.panels[0]?.imagePrompt || "",
         });
       }
+  };
+
+  const openStoryboardDraft = async (direction: string) => {
+    if (status !== GeneratorStatus.IDLE && status !== GeneratorStatus.COMPLETE && status !== GeneratorStatus.ERROR) return;
+
+    try {
+      setStatus(GeneratorStatus.GENERATING_STORY);
+      const { scriptData, effectiveConfig } = await prepareScriptForPage(direction);
+      setStatus(GeneratorStatus.COMPLETE);
+      setStoryboardDraft({ scriptData, effectiveConfig, direction });
+    } catch (error: any) {
+      console.error("Storyboard oluşturma hatası:", error);
+      setStatus(GeneratorStatus.ERROR);
+      const parsed = parseGeminiError(error);
+      setApiError({
+        isOpen: true,
+        isQuota: parsed.isQuota,
+        title: parsed.title,
+        message: parsed.message,
+        retrySeconds: parsed.retrySeconds,
+        onRetry: () => openStoryboardDraft(direction)
+      });
+    }
+  };
+
+  const handleRegenerateStoryboardScript = async () => {
+    if (!storyboardDraft || isRewritingStoryboard) return;
+    setIsRewritingStoryboard(true);
+    try {
+      const { scriptData, effectiveConfig } = await prepareScriptForPage(storyboardDraft.direction);
+      setStoryboardDraft({ ...storyboardDraft, scriptData, effectiveConfig });
+    } catch (error: any) {
+      console.error("Storyboard senaryo yenileme hatası:", error);
+      showStoryToast("Senaryo yeniden yazılamadı, mevcut taslağı düzenleyebilirsiniz.");
+    } finally {
+      setIsRewritingStoryboard(false);
+    }
+  };
+
+  const handleApproveStoryboard = async (editedScript: ComicScriptResult) => {
+    if (!storyboardDraft) return;
+    const { effectiveConfig } = storyboardDraft;
+    setStoryboardDraft(null);
+
+    const newPageId = generateId();
+    const skeletonPanels: ComicPanelData[] = Array.from({ length: 4 }, (_, idx) => ({
+      id: `${newPageId}-skeleton-${idx}`,
+      imagePrompt: "",
+      dialogue: "",
+      characterNames: [],
+      isLoading: true,
+    }));
+    const newPage: ComicPage = { id: newPageId, panels: skeletonPanels, layoutType: "grid-2x2" };
+    setPages((prev) => [...prev, newPage]);
+
+    await renderPanelsForPage(newPageId, editedScript, effectiveConfig);
+  };
+
+  const performGeneration = async (direction: string) => {
+    if (status !== GeneratorStatus.IDLE && status !== GeneratorStatus.COMPLETE && status !== GeneratorStatus.ERROR) return;
+
+    try {
+      setStatus(GeneratorStatus.GENERATING_STORY);
+      const newPageId = generateId();
+      const skeletonPanels: ComicPanelData[] = Array.from({ length: 4 }, (_, idx) => ({
+        id: `${newPageId}-skeleton-${idx}`,
+        imagePrompt: "",
+        dialogue: "",
+        characterNames: [],
+        isLoading: true,
+      }));
+
+      const newPage: ComicPage = { id: newPageId, panels: skeletonPanels, layoutType: "grid-2x2" };
+      setPages((prev) => [...prev, newPage]);
+
+      const { scriptData, effectiveConfig } = await prepareScriptForPage(direction);
+      await renderPanelsForPage(newPageId, scriptData, effectiveConfig);
     } catch (error: any) {
       console.error("Hikaye oluşturma hatası:", error);
       setStatus(GeneratorStatus.ERROR);
@@ -1566,6 +1632,7 @@ export default function App() {
         config={config}
         setConfig={setConfig}
         onGenerate={handleStartGeneration}
+        onPlanStoryboard={handlePlanStoryboardFromSidebar}
         onAutoFill={handleAutoFill}
         status={status}
         isOpen={isSidebarOpen}
@@ -1936,6 +2003,9 @@ export default function App() {
                       cast={config.cast}
                       locations={config.locations || []}
                       style={config.style}
+                      tone={config.tone}
+                      colorPalette={config.colorPalette}
+                      lightingMood={config.lightingMood}
                       renderQuality={config.renderQuality}
                       usePaidApi={config.usePaidApi || false}
                       imageProvider={config.imageProvider || "pollinations_flux"}
@@ -2232,10 +2302,20 @@ export default function App() {
                                     </div>
                                 );
                             })()}
-                            <div className="flex justify-end gap-4 pt-2">
+                            <div className="flex flex-col sm:flex-row justify-end gap-2.5 sm:gap-3 pt-2">
                                 <button 
+                                    type="button"
+                                    onClick={confirmNextPageStoryboard}
+                                    className="w-full sm:w-auto px-5 sm:px-7 py-3 bg-yellow-400 hover:bg-yellow-300 text-black font-display text-sm sm:text-base uppercase border-2 sm:border-4 border-black transition-all shadow-comic active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+                                    title="Önce 4 karelik senaryo ve kamera açılarını görüp düzenleyin, sonra çizin"
+                                >
+                                    <Film size={18} />
+                                    <span>ÖNCE STORYBOARD PLANLA</span>
+                                </button>
+                                <button 
+                                    type="button"
                                     onClick={confirmNextPageGeneration}
-                                    className="w-full sm:w-auto px-8 sm:px-14 py-3 sm:py-4 bg-black text-white font-display text-base sm:text-2xl border-2 sm:border-4 border-black hover:bg-yellow-400 hover:text-black transition-all shadow-comic active:scale-95"
+                                    className="w-full sm:w-auto px-8 sm:px-14 py-3 sm:py-4 bg-black text-white font-display text-base sm:text-2xl border-2 sm:border-4 border-black hover:bg-yellow-400 hover:text-black transition-all shadow-comic active:scale-95 cursor-pointer"
                                 >
                                     HİKAYEYİ ÇİZ!
                                 </button>
@@ -2245,6 +2325,33 @@ export default function App() {
                 </motion.div>
             )}
         </AnimatePresence>
+
+        {/* Storyboard Preparation Loading Banner */}
+        <AnimatePresence>
+            {status === GeneratorStatus.GENERATING_STORY && !storyboardDraft && (
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[115] px-5 py-3 bg-black text-yellow-300 border-3 border-yellow-400 shadow-comic-xl flex items-center gap-3 font-display text-sm uppercase tracking-wider"
+                >
+                    <Loader2 size={18} className="animate-spin text-yellow-400" />
+                    <span>🎬 Yönetmen Storyboard & Sahne Planı Hazırlıyor...</span>
+                </motion.div>
+            )}
+        </AnimatePresence>
+
+        {/* Storyboard & Director Approval Modal */}
+        <StoryboardPreviewModal
+            isOpen={Boolean(storyboardDraft)}
+            pageNumber={pages.length + 1}
+            scriptData={storyboardDraft?.scriptData || null}
+            config={storyboardDraft?.effectiveConfig || config}
+            isRewritingScript={isRewritingStoryboard}
+            onCancel={() => setStoryboardDraft(null)}
+            onRegenerateScript={handleRegenerateStoryboardScript}
+            onApproveAndDraw={handleApproveStoryboard}
+        />
 
         {/* Global Image Portal */}
         <AnimatePresence>
